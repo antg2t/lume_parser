@@ -1,0 +1,30 @@
+{
+  "transaction_count": 176,
+  "transactions_sha256": "91fbc5c440e523844a4462c983be9c0f87befbe2c6065af221b615d582fcb79e",
+  "daily_balance_count": 22,
+  "daily_balances_sha256": "102f8f8d2bc6e65ce28740a4fe501b41ca7f17d46d3bbb7eb5a3ed6029201d8d",
+  "initial_balance": "-108772.38",
+  "final_balance": "522457.58",
+  "period_start": "2026-07-01",
+  "period_end": "2026-07-31",
+  "first_transaction": {
+    "date": "2026-07-01",
+    "description": "PIX ENVIADO",
+    "counterparty": "TJ CONTABIL E ASSESSORIA LTDA",
+    "counterparty_tax_id": "65.087.421/0001-47",
+    "document": null,
+    "amount": "-4394.78",
+    "transaction_type": "debit",
+    "balance": null
+  },
+  "last_transaction": {
+    "date": "2026-07-31",
+    "description": "BOLETOS RECEBIDOS 31/07S",
+    "counterparty": null,
+    "counterparty_tax_id": null,
+    "document": null,
+    "amount": "4545.90",
+    "transaction_type": "credit",
+    "balance": null
+  }
+}

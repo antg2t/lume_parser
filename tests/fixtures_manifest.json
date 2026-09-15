@@ -1,0 +1,372 @@
+{
+  "schema_version": "1.0",
+  "fixtures": [
+    {
+      "id": "bank-statement-itau-pdf",
+      "path": "Extrato/pdf/Extrato Julho Vanguarda Itau.pdf",
+      "sha256": "b3a91a678fd175c73ed87af815574359d05fc334ffb4bd1b6f534e9b80a69e81",
+      "expected_source_format": "pdf",
+      "expected_document_type": "bank_statement",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/bank_statement_itau.json",
+      "golden_kind": "bank_statement"
+    },
+    {
+      "id": "cash-ledger-pdf",
+      "path": "Controle de caixa/pdf/controle_de_caixa_Vanguarda.pdf",
+      "sha256": "0cbf4e20e386eefb123417e9f5dd070874985222f71aa18a2b7e249a578d20eb",
+      "expected_source_format": "pdf",
+      "expected_document_type": "cash_ledger",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/cash_ledger.json",
+      "golden_kind": "cash_ledger",
+      "golden_fields": ["entry_count", "ledger_entry_counts"]
+    },
+    {
+      "id": "cash-ledger-xlsx",
+      "path": "Controle de caixa/xlsx/controle_de_caixa_Vanguarda.xlsx",
+      "sha256": "81b0951a869743a3c76190452ab1fb23653ca5d8d0b3315ee36e7f25957cf6f3",
+      "expected_source_format": "xlsx",
+      "expected_document_type": "cash_ledger",
+      "expected_parser": "xlsx-openpyxl",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/cash_ledger.json",
+      "golden_kind": "cash_ledger"
+    },
+    {
+      "id": "chart-of-accounts",
+      "path": "Plano de conta/Plano de Contas.xlsx",
+      "sha256": "60f890d941d7af999dbaccc88aa5dbe95d853fbf468820493c36838aa40eb973",
+      "expected_source_format": "xlsx",
+      "expected_document_type": "chart_of_accounts",
+      "expected_parser": "xlsx-openpyxl",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/chart_of_accounts.json",
+      "golden_kind": "chart_of_accounts"
+    },
+    {
+      "id": "chart-of-accounts-complete",
+      "path": "Plano de conta/Plano de Contas Completo_v2.xlsx",
+      "sha256": "2418b2d8c2685baf1ba93508e0bd4796ed959ef54a9db1943f7f3921227347c1",
+      "expected_source_format": "xlsx",
+      "expected_document_type": "chart_of_accounts",
+      "expected_parser": "xlsx-openpyxl",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/chart_of_accounts_complete.json",
+      "golden_kind": "chart_of_accounts"
+    },
+    {
+      "id": "accounting-history-luftklim",
+      "path": "Historico contabil/LUFTKLIM_2026_Lctos.xlsx",
+      "sha256": "640d93451e974f63bb20fef48fd57c962295647070b25fa5a9a4eb8fff23dc00",
+      "expected_source_format": "xlsx",
+      "expected_document_type": "accounting_history",
+      "expected_parser": "xlsx-openpyxl",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/accounting_history_luftklim.json",
+      "golden_kind": "accounting_history"
+    },
+    {
+      "id": "accounting-history-martine",
+      "path": "Historico contabil/MARTINE_2026_Lctos_Jan_Jul.xlsx",
+      "sha256": "10d87cf7d8eeb265e6a7958b25e310daa6e3c64d71a41d039c7d21b225225849",
+      "expected_source_format": "xlsx",
+      "expected_document_type": "accounting_history",
+      "expected_parser": "xlsx-openpyxl",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/accounting_history_martine.json",
+      "golden_kind": "accounting_history"
+    },
+    {
+      "id": "accounting-history-vanguarda",
+      "path": "Historico contabil/Vanguarda Consolidado_2026_Documento que o sistema deve produzir.xlsx",
+      "sha256": "c99b9106b4dbbddc33651d846efac930ebde4979909e51ce343fde9cdbe49bd7",
+      "expected_source_format": "xlsx",
+      "expected_document_type": "accounting_history",
+      "expected_parser": "xlsx-openpyxl",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/accounting_history_vanguarda.json",
+      "golden_kind": "accounting_history"
+    },
+    {
+      "id": "nfse-pdf-31251011246220369000291202600013362726080035146987",
+      "path": "Nota fiscal/pdf/31251011246220369000291202600013362726080035146987.pdf",
+      "sha256": "7bd9f0dd85bbc06003c66ba6c7debff32750479c24afed4262be27a9f02027f6",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "31251011246220369000291202600013362726080035146987.pdf"
+    },
+    {
+      "id": "nfse-pdf-35095021200331788001603000000003654726085958783994",
+      "path": "Nota fiscal/pdf/35095021200331788001603000000003654726085958783994.pdf",
+      "sha256": "9ccb9374c804377e8c2be5420c378f30f89f115356c7c7417f7a60d48a4b8040",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35095021200331788001603000000003654726085958783994.pdf"
+    },
+    {
+      "id": "nfse-pdf-35095021240072709000117000000000006726085984284819",
+      "path": "Nota fiscal/pdf/35095021240072709000117000000000006726085984284819.pdf",
+      "sha256": "1b1a1b64ffc3027f6b38c583f782864942be91009f04f02052039f96280125d3",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35095021240072709000117000000000006726085984284819.pdf"
+    },
+    {
+      "id": "nfse-pdf-35095021246124624000111000001184916926085955970513",
+      "path": "Nota fiscal/pdf/35095021246124624000111000001184916926085955970513.pdf",
+      "sha256": "618ca2f28eeefcf33145e479be4423decbde3e26df721b5d24a80468c8a8ff3e",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35095021246124624000111000001184916926085955970513.pdf"
+    },
+    {
+      "id": "nfse-pdf-35095021253283761000164000000000080126085972967061",
+      "path": "Nota fiscal/pdf/35095021253283761000164000000000080126085972967061.pdf",
+      "sha256": "2400b3d1d44fb0493cb1689da9f5e64d14c026a273a538198e8ce3d90ffddbfe",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35095021253283761000164000000000080126085972967061.pdf"
+    },
+    {
+      "id": "nfse-pdf-35095021253283761000164000000000081126085988407233",
+      "path": "Nota fiscal/pdf/35095021253283761000164000000000081126085988407233.pdf",
+      "sha256": "1d51793f5e4c2c95431c7bbcb428c4c96a06d43c09fb1af813c51ac300b26def",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35095021253283761000164000000000081126085988407233.pdf"
+    },
+    {
+      "id": "nfse-pdf-35308051203916076000150000000004794826083203354410",
+      "path": "Nota fiscal/pdf/35308051203916076000150000000004794826083203354410.pdf",
+      "sha256": "191d4e5899bb4585a37175515c75c391608fbc212e85769a18d0e4768c47632d",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35308051203916076000150000000004794826083203354410.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081201109184000438000018521873326089174457873",
+      "path": "Nota fiscal/pdf/35503081201109184000438000018521873326089174457873.pdf",
+      "sha256": "e734f9518f8c4884feb910fef716b64c99a3361ffc41ccdf2a6ba3ae1b319a33",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081201109184000438000018521873326089174457873.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081201109184000438000018521873426081927964228",
+      "path": "Nota fiscal/pdf/35503081201109184000438000018521873426081927964228.pdf",
+      "sha256": "3c10fc7584ad239848d70b7dc54a0d84c9b5283ce60daf006b8df80e03c9d3f4",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081201109184000438000018521873426081927964228.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081201109184000438000018521873526080045865278",
+      "path": "Nota fiscal/pdf/35503081201109184000438000018521873526080045865278.pdf",
+      "sha256": "65284ada928a6dff26a68990af89a6265b72e6d2cbd909796e1b639b59b734e7",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081201109184000438000018521873526080045865278.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081201109184000438000018521873626082205839016",
+      "path": "Nota fiscal/pdf/35503081201109184000438000018521873626082205839016.pdf",
+      "sha256": "bfa7d57d6bf43884a2ccf0c9de87bf28eb9370dd7239ddf64c4db4a2deaca43c",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081201109184000438000018521873626082205839016.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081204712500000107000025781262326086586412376",
+      "path": "Nota fiscal/pdf/35503081204712500000107000025781262326086586412376.pdf",
+      "sha256": "d3660ea4c5fc4624eb68d4194839d01b7417eab57438ebece27c0ceac5cd1fab",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081204712500000107000025781262326086586412376.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081221018347000131000000000020426080526554321",
+      "path": "Nota fiscal/pdf/35503081221018347000131000000000020426080526554321.pdf",
+      "sha256": "3c894b84e73e2b6ac3a0ffcb1b7f59d031d9677e30f60d8817455f1b939439d0",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081221018347000131000000000020426080526554321.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081233449007000144000000843361126087824749898",
+      "path": "Nota fiscal/pdf/35503081233449007000144000000843361126087824749898.pdf",
+      "sha256": "d96d9e00bf20af0a85b9ef3102c443d9c767002677db6b13d26c458fd851328a",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081233449007000144000000843361126087824749898.pdf"
+    },
+    {
+      "id": "nfse-pdf-35503081265087421000147000000000199926088885308523",
+      "path": "Nota fiscal/pdf/35503081265087421000147000000000199926088885308523.pdf",
+      "sha256": "859130feeb0daa2c4b78f2619fa5e342bf46d055834f1db6372a7ce5e2e0c664",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081265087421000147000000000199926088885308523.pdf"
+    },
+    {
+      "id": "nfse-pdf-35562061255043178000101000000000008126080000000813",
+      "path": "Nota fiscal/pdf/35562061255043178000101000000000008126080000000813.pdf",
+      "sha256": "2cbae71e8960c94b6fedd5ef4cb21f2c21bb7f090cd6073a1487d98381db0a1d",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35562061255043178000101000000000008126080000000813.pdf"
+    },
+    {
+      "id": "nfse-pdf-35567011218572372000158000000000512826080163239136",
+      "path": "Nota fiscal/pdf/35567011218572372000158000000000512826080163239136.pdf",
+      "sha256": "40c88f74a1b0717ffb12a904f7722497b7d48f317ce9665741500cc62dd50668",
+      "expected_source_format": "pdf",
+      "expected_document_type": "nfse",
+      "expected_parser": "pdf-text",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_pdf.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35567011218572372000158000000000512826080163239136.pdf"
+    },
+    {
+      "id": "nfse-xml-35095021204659127000178000000000105826096012371989105804659127000178",
+      "path": "Nota fiscal/xml/35095021204659127000178000000000105826096012371989105804659127000178.xml",
+      "sha256": "f82522c1e0cd5d1d944b981683c0b0b9612d867038113555d5830aeacbae778a",
+      "expected_source_format": "xml",
+      "expected_document_type": "nfse",
+      "expected_parser": "nfse-national-xml",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_xml.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35095021204659127000178000000000105826096012371989105804659127000178.xml"
+    },
+    {
+      "id": "nfse-xml-3550308120471250000010700002607508032609621710676026075080304712500000107",
+      "path": "Nota fiscal/xml/3550308120471250000010700002607508032609621710676026075080304712500000107.xml",
+      "sha256": "74043f8e5c3e0e60702b964a5f5c7bff3e3c93a80dc17dd618926d93fc00d6c8",
+      "expected_source_format": "xml",
+      "expected_document_type": "nfse",
+      "expected_parser": "nfse-national-xml",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_xml.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "3550308120471250000010700002607508032609621710676026075080304712500000107.xml"
+    },
+    {
+      "id": "nfse-xml-35503081265087421000147000000000203126094519236523203165087421000147",
+      "path": "Nota fiscal/xml/35503081265087421000147000000000203126094519236523203165087421000147.xml",
+      "sha256": "9f64beee27329450fb8d5e0a797ddee563507517c9ab34f6aec28960d9f45d19",
+      "expected_source_format": "xml",
+      "expected_document_type": "nfse",
+      "expected_parser": "nfse-national-xml",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_xml.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "35503081265087421000147000000000203126094519236523203165087421000147.xml"
+    },
+    {
+      "id": "nfse-xml-3556206122096177900011900000004832062609000483206648320620961779000119",
+      "path": "Nota fiscal/xml/3556206122096177900011900000004832062609000483206648320620961779000119.xml",
+      "sha256": "b0b4a9309fabf4049ccef57d1923905fca4234d2f2374e1a9da89f7f5b32a654",
+      "expected_source_format": "xml",
+      "expected_document_type": "nfse",
+      "expected_parser": "nfse-national-xml",
+      "expected_requires_ocr": false,
+      "golden": "tests/goldens/nfse_xml.json",
+      "golden_kind": "fiscal",
+      "golden_selector": "3556206122096177900011900000004832062609000483206648320620961779000119.xml"
+    }
+  ],
+  "cross_validations": [
+    {
+      "id": "controle-caixa-pdf-xlsx",
+      "kind": "cash_ledger_equivalence",
+      "reference_fixture": "cash-ledger-xlsx",
+      "candidate_fixture": "cash-ledger-pdf"
+    }
+  ],
+  "known_limitations": [
+    {
+      "id": "bradesco-xls",
+      "description": "O extrato Bradesco em .xls permanece fora da baseline: o formato legado sera tratado na R07."
+    },
+    {
+      "id": "bradesco-xlsx",
+      "description": "O extrato Bradesco em .xlsx permanece fora da baseline: o adaptador de extrato tabular sera tratado na R07."
+    },
+    {
+      "id": "bradesco-pdf",
+      "description": "O PDF Bradesco possui extracao textual, mas ainda nao possui adaptador de extrato; ele esta fora da baseline de 24 fixtures da R05."
+    },
+    {
+      "id": "ocr-ai",
+      "description": "Nenhuma fixture da baseline usa OCR ou IA; ambos continuam desativados nesta release."
+    }
+  ]
+}

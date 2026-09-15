@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+output/
+docs/Nota fiscal/
+docs/Controle de caixa/
+docs/Extrato/
+docs/Plano de conta/
+docs/Historico contabil/

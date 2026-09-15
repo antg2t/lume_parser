@@ -1,0 +1,53 @@
+{
+  "31251011246220369000291202600013362726080035146987.pdf": {
+    "key": "31251011246220369000291202600013362726080035146987", "number": "2026000133627", "competence_date": "2026-08-21", "issue_datetime": "2026-08-21T12:28:13", "dps.number": "2026000133627", "provider.tax_id": "46220369000291", "provider.name": "D-SAAS TECNOLOGIA EM DESENVOLVIMENTO DE SOFTWARE LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "010501", "service.nbs_code": "111032200", "amounts.gross": "174.00", "amounts.iss": "3.48"
+  },
+  "35095021200331788001603000000003654726085958783994.pdf": {
+    "key": "35095021200331788001603000000003654726085958783994", "number": "36547", "competence_date": "2026-08-01", "issue_datetime": "2026-08-03T17:11:32", "dps.number": "36547", "provider.tax_id": "00331788001603", "provider.name": "AIR LIQUIDE BRASIL LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "140101", "service.nbs_code": null, "amounts.gross": "620.49", "amounts.iss": "31.02"
+  },
+  "35095021240072709000117000000000006726085984284819.pdf": {
+    "key": "35095021240072709000117000000000006726085984284819", "number": "67", "competence_date": "2026-08-01", "issue_datetime": "2026-08-25T11:06:18", "dps.number": "67", "provider.tax_id": "40072709000117", "provider.name": "CERAMIC FACTOR BRASIL LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "170201", "service.nbs_code": "114110000", "amounts.gross": "43000.00", "amounts.iss": "1523.02"
+  },
+  "35095021246124624000111000001184916926085955970513.pdf": {
+    "key": "35095021246124624000111000001184916926085955970513", "number": "11849169", "competence_date": "2026-08-01", "issue_datetime": "2026-08-01T13:48:25", "dps.number": "11849169", "provider.tax_id": "46124624000111", "provider.name": "UNIMED CAMPINAS COOPERATIVA DE TRABALHO MEDICO", "customer.tax_id": "05075384000125", "service.national_tax_code": "042201", "service.nbs_code": null, "amounts.gross": "9778.83", "amounts.iss": "488.94"
+  },
+  "35095021253283761000164000000000080126085972967061.pdf": {
+    "key": "35095021253283761000164000000000080126085972967061", "number": "801", "competence_date": "2026-08-01", "issue_datetime": "2026-08-13T16:17:05", "dps.number": "801", "provider.tax_id": "53283761000164", "provider.name": "RODANDO PALLET SERVICOS HIDRAULICOS LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "140101", "service.nbs_code": null, "amounts.gross": "580.00", "amounts.iss": "15.49"
+  },
+  "35095021253283761000164000000000081126085988407233.pdf": {
+    "key": "35095021253283761000164000000000081126085988407233", "number": "811", "competence_date": "2026-08-01", "issue_datetime": "2026-08-28T14:41:33", "dps.number": "811", "provider.tax_id": "53283761000164", "provider.name": "RODANDO PALLET SERVICOS HIDRAULICOS LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "140101", "service.nbs_code": "118032900", "amounts.gross": "580.00", "amounts.iss": "15.49"
+  },
+  "35308051203916076000150000000004794826083203354410.pdf": {
+    "key": "35308051203916076000150000000004794826083203354410", "number": "47948", "competence_date": "2026-08-05", "issue_datetime": "2026-08-05T17:43:35", "dps.number": "47948", "provider.tax_id": "03916076000150", "provider.name": "ZUCCHETTI SOFTWARE E SISTEMAS LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "010501", "service.nbs_code": "111032100", "amounts.gross": "1140.18", "amounts.iss": "34.21"
+  },
+  "35503081201109184000438000018521873326089174457873.pdf": {
+    "key": "35503081201109184000438000018521873326089174457873", "number": "185218733", "competence_date": "2026-08-02", "issue_datetime": "2026-08-05T19:41:47", "dps.number": "185218733", "provider.tax_id": "01109184000438", "provider.name": "UNIVERSO ONLINE S/A", "customer.tax_id": "05075384000125", "service.national_tax_code": "010701", "service.nbs_code": "115013000", "amounts.gross": "6.73", "amounts.iss": "0.19"
+  },
+  "35503081201109184000438000018521873426081927964228.pdf": {
+    "key": "35503081201109184000438000018521873426081927964228", "number": "185218734", "competence_date": "2026-08-02", "issue_datetime": "2026-08-05T19:41:47", "dps.number": "185218734", "provider.tax_id": "01109184000438", "provider.name": "UNIVERSO ONLINE S/A", "customer.tax_id": "05075384000125", "service.national_tax_code": "010902", "service.nbs_code": "117031000", "amounts.gross": "88.00", "amounts.iss": null
+  },
+  "35503081201109184000438000018521873526080045865278.pdf": {
+    "key": "35503081201109184000438000018521873526080045865278", "number": "185218735", "competence_date": "2026-08-02", "issue_datetime": "2026-08-05T19:41:47", "dps.number": "185218735", "provider.tax_id": "01109184000438", "provider.name": "UNIVERSO ONLINE S/A", "customer.tax_id": "05075384000125", "service.national_tax_code": "010501", "service.nbs_code": "111032200", "amounts.gross": "11.92", "amounts.iss": "0.34"
+  },
+  "35503081201109184000438000018521873626082205839016.pdf": {
+    "key": "35503081201109184000438000018521873626082205839016", "number": "185218736", "competence_date": "2026-08-02", "issue_datetime": "2026-08-05T19:41:47", "dps.number": "185218736", "provider.tax_id": "01109184000438", "provider.name": "UNIVERSO ONLINE S/A", "customer.tax_id": "05075384000125", "service.national_tax_code": "010301", "service.nbs_code": "115062100", "amounts.gross": "72.15", "amounts.iss": "2.09"
+  },
+  "35503081204712500000107000025781262326086586412376.pdf": {
+    "key": "35503081204712500000107000025781262326086586412376", "number": "257812623", "competence_date": "2026-08-07", "issue_datetime": "2026-08-07T02:37:22", "dps.number": "257812623", "provider.tax_id": "04712500000107", "provider.name": "MICROSOFT DO BRASIL IMPORTACAO E COMERCIO DE SOFTWARE E VIDEO", "customer.tax_id": "05075384000125", "service.national_tax_code": "010501", "service.nbs_code": "111032200", "amounts.gross": "133.60", "amounts.iss": "3.87"
+  },
+  "35503081221018347000131000000000020426080526554321.pdf": {
+    "key": "35503081221018347000131000000000020426080526554321", "number": "204", "competence_date": "2026-08-06", "issue_datetime": "2026-08-06T07:41:39", "dps.number": "204", "provider.tax_id": "21018347000131", "provider.name": "C.H.TESKE REPRESENTAÇAO COMERCIAL", "customer.tax_id": "05075384000125", "service.national_tax_code": "100901", "service.nbs_code": "999999999", "amounts.gross": "45474.66", "amounts.iss": "0.00"
+  },
+  "35503081233449007000144000000843361126087824749898.pdf": {
+    "key": "35503081233449007000144000000843361126087824749898", "number": "8433611", "competence_date": "2026-08-26", "issue_datetime": "2026-08-26T12:26:02", "dps.number": "8433611", "provider.tax_id": "33449007000144", "provider.name": "EMPRESA BRASILEIRA DE BENEFICIOS E PAGAMENTOS INSTITUICAO DE", "customer.tax_id": "05075384000125", "service.national_tax_code": "171201", "service.nbs_code": "114012100", "amounts.gross": "0.00", "amounts.iss": "0.00"
+  },
+  "35503081265087421000147000000000199926088885308523.pdf": {
+    "key": "35503081265087421000147000000000199926088885308523", "number": "1999", "competence_date": "2026-08-11", "issue_datetime": "2026-08-11T08:32:46", "dps.number": "1999", "provider.tax_id": "65087421000147", "provider.name": "TJ CONTABIL E ASSESSORIA LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "171901", "service.nbs_code": "999999999", "amounts.gross": "3650.00", "amounts.iss": "0.00"
+  },
+  "35562061255043178000101000000000008126080000000813.pdf": {
+    "key": "35562061255043178000101000000000008126080000000813", "number": "81", "competence_date": "2026-08-31", "issue_datetime": "2026-08-31T17:27:11", "dps.number": "81", "provider.tax_id": "55043178000101", "provider.name": "TECNOFIRE REPRESENTAÇÕES E SERVIÇOS LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "100901", "service.nbs_code": "102010000", "amounts.gross": "43368.84", "amounts.iss": "0.00"
+  },
+  "35567011218572372000158000000000512826080163239136.pdf": {
+    "key": "35567011218572372000158000000000512826080163239136", "number": "5128", "competence_date": "2026-08-06", "issue_datetime": "2026-08-06T03:05:20", "dps.number": "3765", "provider.tax_id": "18572372000158", "provider.name": "DESAFIO SEGURANCA DO TRABALHO E MEDICINA OCUPACIONAL LTDA", "customer.tax_id": "05075384000125", "service.national_tax_code": "170201", "service.nbs_code": "114110000", "amounts.gross": "660.00", "amounts.iss": "21.19"
+  }
+}

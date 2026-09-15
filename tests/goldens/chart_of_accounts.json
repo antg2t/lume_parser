@@ -1,0 +1,6 @@
+{
+  "account_count": 1648,
+  "accounts_sha256": "9423f9bba32cddc581045baba1dd5722c1734e43b60f844c27f6b5247ae5335d",
+  "first_account": {"code": "1.0.0.00.000", "description": "Ativo", "reduced_code": null},
+  "last_account": {"code": "4.9.1.01.004", "description": "Prov.p/C.Social - Diferida", "reduced_code": "4001172"}
+}

@@ -1,0 +1,25 @@
+{
+  "entry_count": 261,
+  "ledger_entry_counts": [88, 156, 11, 6],
+  "entries_sha256": "4345720cba4ac7b56cd372a5e5364cb42d17d0a1fc3265bd2c07eec8cb87a2c9",
+  "first_entry": {
+    "date": "2026-08-03",
+    "issue_date": "2026-08-03",
+    "document": null,
+    "counterparty": "TRANSFERENCIA",
+    "notes": "TRANSFERENCIA ENTRE CONTAS",
+    "inflow": "0",
+    "outflow": "50000.00",
+    "balance": "410863.74"
+  },
+  "last_entry": {
+    "date": "2026-08-10",
+    "issue_date": "2026-06-10",
+    "document": "0000099159",
+    "counterparty": "00126-Eletrival Materiais Eletricos Ltda.",
+    "notes": null,
+    "inflow": "0",
+    "outflow": "443.75",
+    "balance": "-1354.04"
+  }
+}
