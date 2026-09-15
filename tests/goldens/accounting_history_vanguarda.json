@@ -1,6 +1,0 @@
-{
-  "entry_count": 275,
-  "entries_sha256": "f197b1badb8794057b368fc9cdeb8db5c08a8e3ef76f07ed0d3441c445ab662a",
-  "first_entry": {"entry_number": "1", "date": "2026-07-01", "debit_account": "1000006", "credit_account": "1000029", "amount": "1435.35", "standard_history": "551", "complement": "IVN INDUSTRIA VIDREIRA - NF 12955", "debit_cost_center": null, "credit_cost_center": null, "tax_id": null},
-  "last_entry": {"entry_number": "275", "date": "2026-07-31", "debit_account": "4001106", "credit_account": "1000006", "amount": "130.36", "standard_history": "462", "complement": "PARCELAMENTO PGFN - DIVIDA ATIVA", "debit_cost_center": null, "credit_cost_center": null, "tax_id": null}
-}

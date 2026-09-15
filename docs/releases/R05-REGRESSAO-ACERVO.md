@@ -2,7 +2,7 @@
 
 ## Contexto e objetivo
 
-Esta release fecha o primeiro ciclo. Ela pressupõe R00–R04 concluídas e cobre 29 fixtures: as 24 históricas, dois planos de contas e três históricos contábeis XLSX.
+Esta release fecha o primeiro ciclo. O acervo privado original cobria 29 fixtures: 24 documentos operacionais/fiscais, dois planos de contas e três históricos contábeis XLSX. O manifesto distribuível cobre 26 fixtures: os três históricos contábeis, suas goldens e seus hashes permanecem exclusivamente no acervo privado.
 
 O objetivo é provar que a arquitetura funciona em lote, medir qualidade e congelar uma base de regressão antes de adicionar novos formatos.
 
@@ -17,8 +17,8 @@ O objetivo é provar que a arquitetura funciona em lote, medir qualidade e conge
 
 ## Operação da baseline
 
-O manifesto versionado fica em `tests/fixtures_manifest.json`. Ele fixa as 29
-fixtures por SHA-256 — e não por nome ou diretório — com formato,
+O manifesto versionado fica em `tests/fixtures_manifest.json`. Ele fixa as 26
+fixtures públicas por SHA-256 — e não por nome ou diretório — com formato,
 tipo documental, parser e golden correspondente. Assim, os arquivos podem ser
 movidos ou renomeados dentro de `docs` sem alterar a seleção da regressão.
 
@@ -33,11 +33,10 @@ de extração/normalização/validação/total, warnings, erros, campos
 esperados/encontrados, uso de OCR/IA, cobertura e a comparação cruzada entre
 o controle de caixa XLSX e PDF.
 
-Os layouts reais de plano de contas e histórico contábil foram promovidos à
-baseline. O arquivo `VANGUARD_2026_Lctos_Contimatic.xlsx` permanece fora dela
-enquanto estiver bloqueado pelo OneDrive; o processamento devolve erro
-estruturado, sem sucesso silencioso. Extratos tabulares genéricos continuam no
-escopo da R07.
+Os layouts de plano de contas foram promovidos à baseline pública. O adaptador
+de histórico contábil continua suportado pelo produto, mas a validação com
+históricos reais deve usar manifesto e acervo privados, fora do Git. Extratos
+tabulares genéricos continuam no escopo da R07.
 
 ## Implementação planejada
 
@@ -50,15 +49,15 @@ escopo da R07.
 
 ## Testes
 
-- Execução das 29 fixtures em ordem diferente e com nomes copiados/alterados.
+- Execução das 26 fixtures públicas em ordem diferente e com nomes copiados/alterados.
 - Reexecução integral para verificar determinismo.
 - Inserção de arquivos vazios, corrompidos e com extensão falsa para testar isolamento de falhas.
 - Validação dos relatórios agregados e códigos de saída da CLI.
 
 ## Critérios de aceite
 
-- 29 de 29 fixtures classificadas corretamente.
-- 29 de 29 produzem RAW, normalizado e resultado, ou erro estruturado previsto.
+- 26 de 26 fixtures públicas classificadas corretamente.
+- 26 de 26 produzem RAW, normalizado e resultado, ou erro estruturado previsto.
 - Zero exceções não tratadas.
 - Campos obrigatórios coincidem com as goldens.
 - Valores financeiros permanecem exatos.

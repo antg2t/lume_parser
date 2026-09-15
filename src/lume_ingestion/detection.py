@@ -20,6 +20,7 @@ class FileTypeDetector:
     """Detecta o formato pelo conteudo; a extensao nunca decide sozinha."""
 
     HEADER_SCAN_BYTES = 4096
+    _XLS_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
     @staticmethod
     def _is_xlsx(path: Path, prefix: bytes) -> bool:
@@ -32,6 +33,12 @@ class FileTypeDetector:
         except (BadZipFile, KeyError, OSError):
             return False
         return b"spreadsheetml" in content_types
+
+    @classmethod
+    def _is_xls(cls, prefix: bytes) -> bool:
+        """Recognize the Compound File signature used by legacy Excel XLS."""
+
+        return prefix.startswith(cls._XLS_SIGNATURE)
 
     def inspect(self, path: str | Path, max_size: int = DEFAULT_MAX_FILE_SIZE) -> Detection:
         file_path = require_regular_file(path, max_size=max_size)
@@ -49,12 +56,15 @@ class FileTypeDetector:
                 detected = "xml"
             elif self._is_xlsx(file_path, prefix):
                 detected = "xlsx"
+            elif self._is_xls(prefix):
+                detected = "xls"
             else:
                 detected = None
         warnings: list[Warning] = []
         extension_says_pdf = file_path.suffix.lower() == ".pdf"
         extension_says_xml = file_path.suffix.lower() == ".xml"
         extension_says_xlsx = file_path.suffix.lower() == ".xlsx"
+        extension_says_xls = file_path.suffix.lower() == ".xls"
         if extension_says_pdf and detected != "pdf":
             warnings.append(
                 Warning(
@@ -100,11 +110,27 @@ class FileTypeDetector:
                     details={"extension": file_path.suffix.lower()},
                 )
             )
+        elif extension_says_xls and detected != "xls":
+            warnings.append(
+                Warning(
+                    code="extension_content_mismatch",
+                    message="A extensao indica XLS, mas a assinatura binaria nao confirma uma planilha legada.",
+                )
+            )
+        elif detected == "xls" and not extension_says_xls:
+            warnings.append(
+                Warning(
+                    code="extension_content_mismatch",
+                    message="O conteudo e uma planilha XLS legada, embora a extensao do arquivo seja diferente.",
+                    details={"extension": file_path.suffix.lower()},
+                )
+            )
         source = source_file(file_path)
         media_types = {
             "pdf": "application/pdf",
             "xml": "application/xml",
             "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "xls": "application/vnd.ms-excel",
         }
         source.media_type = media_types.get(detected)
         return Detection(source=source, format=detected, warnings=warnings)

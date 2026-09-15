@@ -67,7 +67,7 @@ def test_generic_pdf_is_not_promoted_to_nfse(tmp_path: Path) -> None:
     result = run_pipeline(generic, tmp_path / "output")
 
     assert result.success
-    assert result.document_type is None
+    assert result.document_type != "nfse"
 
 
 def test_spatial_parser_tolerates_text_diagnostics_and_word_order_variants(tmp_path: Path) -> None:

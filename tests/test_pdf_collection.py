@@ -19,7 +19,7 @@ PDFS = sorted(
 )
 NFSE_PDFS = sorted(DOCS_ROOT.glob("Nota fiscal/pdf/*.pdf"))
 CASH_LEDGER_PDFS = sorted(DOCS_ROOT.glob("Controle de caixa/pdf/*.pdf"))
-BANK_STATEMENT_PDFS = sorted(DOCS_ROOT.glob("Extrato/pdf/*Itau*.pdf"))
+BANK_STATEMENT_PDFS = sorted(DOCS_ROOT.glob("Extrato/pdf/*.pdf"))
 
 
 @pytest.mark.integration
@@ -43,9 +43,15 @@ def test_current_pdf_collection_is_textual(pdf_path: Path, tmp_path: Path) -> No
         assert len(result.outputs.page_texts) == 12
     elif pdf_path in BANK_STATEMENT_PDFS:
         assert result.document_type == "bank_statement"
-        assert len(result.data["transactions"]) == 176
-        assert len(result.data["daily_balances"]) == 22
-        assert len(result.outputs.page_texts) == 6
+        expected = {
+            "Itaú": (176, 22, 6),
+            "Bradesco": (88, 16, 3),
+        }[result.data["bank"]]
+        assert (
+            len(result.data["transactions"]),
+            len(result.data["daily_balances"]),
+            len(result.outputs.page_texts),
+        ) == expected
     else:
         assert result.document_type is None
         assert result.data["page_count"] == result.data["useful_page_count"]

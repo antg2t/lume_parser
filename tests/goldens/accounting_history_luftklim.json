@@ -1,6 +1,0 @@
-{
-  "entry_count": 7060,
-  "entries_sha256": "8d6d5ac4d1698d48c45ff6318e1e3c7535dacd5f16405a432cd9c862d17a3411",
-  "first_entry": {"entry_number": "1", "date": "2026-01-01", "debit_account": "2000191", "credit_account": "2000189", "amount": "3077219.20", "standard_history": null, "complement": "Transf.p/Melhor Classifica��o Contabil", "debit_cost_center": null, "credit_cost_center": null, "tax_id": null},
-  "last_entry": {"entry_number": "4661", "date": "2026-08-24", "debit_account": "4000800", "credit_account": "2000001", "amount": "33535.05", "standard_history": null, "complement": "Desps.Efetuadas conf.NF 8 PATER SERVI�OS", "debit_cost_center": null, "credit_cost_center": null, "tax_id": null}
-}

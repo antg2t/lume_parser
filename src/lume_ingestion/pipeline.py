@@ -8,7 +8,8 @@ from pydantic import ValidationError
 
 from lume_ingestion import parsers as _registered_parsers  # noqa: F401
 from lume_ingestion.artifacts import OutputDirectory, read_json, write_json
-from lume_ingestion.bank_statement import normalize_itau_bank_statement, reconcile_bank_statement
+from lume_ingestion.bank_statement import normalize_bank_statement, reconcile_bank_statement
+from lume_ingestion.bank_statement_spreadsheet import normalize_spreadsheet_bank_statement
 from lume_ingestion.accounting import normalize_accounting_history, normalize_chart_of_accounts
 from lume_ingestion.cash_ledger import (
     normalize_cash_ledger_pdf,
@@ -85,7 +86,7 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
     elif raw.get("source_format") == "pdf" and raw.get("document_type") == "bank_statement":
-        bank_statement, parser_warnings = normalize_itau_bank_statement(raw)
+        bank_statement, parser_warnings = normalize_bank_statement(raw)
         normalized = {
             "schema_version": "1.0",
             "source": raw["source"],
@@ -95,6 +96,22 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "parser_version": raw["parser_version"],
             "classification": raw["classification"],
             "requires_ocr": raw["requires_ocr"],
+            "bank_statement": bank_statement.model_dump(mode="json"),
+            "warnings": [*raw.get("warnings", []), *(warning.model_dump(mode="json") for warning in parser_warnings)],
+            "errors": raw.get("errors", []),
+            "normalization_duration_ms": round((perf_counter() - started) * 1000),
+        }
+    elif raw.get("source_format") in {"xlsx", "xls"} and raw.get("document_type") == "bank_statement":
+        bank_statement, parser_warnings = normalize_spreadsheet_bank_statement(raw)
+        normalized = {
+            "schema_version": "1.0",
+            "source": raw["source"],
+            "source_format": raw["source_format"],
+            "document_type": "bank_statement",
+            "parser": raw["parser"],
+            "parser_version": raw["parser_version"],
+            "classification": None,
+            "requires_ocr": False,
             "bank_statement": bank_statement.model_dump(mode="json"),
             "warnings": [*raw.get("warnings", []), *(warning.model_dump(mode="json") for warning in parser_warnings)],
             "errors": raw.get("errors", []),
@@ -236,7 +253,7 @@ def validate(normalized_path: str | Path, output_path: str | Path | None = None)
             ) from exc
         errors.extend(validate_cash_ledger_collection(cash_ledger))
         cash_ledger_data = cash_ledger.model_dump(mode="json")
-    elif source_format == "pdf" and normalized.get("document_type") == "bank_statement":
+    elif source_format in {"pdf", "xlsx", "xls"} and normalized.get("document_type") == "bank_statement":
         try:
             bank_statement = BankStatement.model_validate(normalized.get("bank_statement"))
         except ValidationError as exc:

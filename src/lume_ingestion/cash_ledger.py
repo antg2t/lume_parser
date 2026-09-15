@@ -20,11 +20,12 @@ _HEADER_FIELDS = {
     "document": {"DOC", "DOCUMENTO", "NUMERODOCUMENTO"},
     "counterparty": {"CLIENTEFORNECEDOR", "CLIENTE", "FORNECEDOR"},
     "notes": {"ANOTACOES", "ANOTACAO", "OBSERVACAO", "OBSERVACOES", "HISTORICO"},
+    "account": {"BANCO", "CONTA", "CONTABANCARIA"},
     "inflow": {"ENTRADA", "CREDITO"},
     "outflow": {"SAIDA", "DEBITO"},
     "balance": {"SALDO"},
 }
-_REQUIRED_HEADERS = frozenset(_HEADER_FIELDS)
+_REQUIRED_HEADERS = frozenset(_HEADER_FIELDS) - {"account"}
 
 
 def fold_text(value: str) -> str:
@@ -198,7 +199,7 @@ def normalize_cash_ledger_xlsx(raw: dict[str, Any]) -> tuple[CashLedgerCollectio
         header_found = True
         header_row, columns = header
         entries = [
-            entry
+            (entry, clean_text(_cell_value(_cell_map(row), columns["account"])) if "account" in columns else None)
             for row in rows
             if int(row.get("row_number", 0)) > header_row
             if (entry := _entry_from_xlsx_row(row, columns, str(sheet.get("name") or ""))) is not None
@@ -213,11 +214,12 @@ def normalize_cash_ledger_xlsx(raw: dict[str, Any]) -> tuple[CashLedgerCollectio
             )
             continue
         segment: list[CashLedgerEntry] = []
-        for entry in entries:
-            reason = _xlsx_segment_reason(segment[-1], entry) if segment else None
+        current_account: str | None = None
+        for entry, account in entries:
+            reason = "account_changed" if segment and account and current_account and account != current_account else _xlsx_segment_reason(segment[-1], entry) if segment else None
             if reason:
                 previous = segment[-1]
-                ledgers.append(_ledger(segment))
+                ledgers.append(_ledger(segment, account=current_account))
                 warnings.append(
                     Warning(
                         code="cash_ledger_segment_inferred",
@@ -232,9 +234,10 @@ def normalize_cash_ledger_xlsx(raw: dict[str, Any]) -> tuple[CashLedgerCollectio
                     )
                 )
                 segment = []
+            current_account = account or current_account
             segment.append(entry)
         if segment:
-            ledgers.append(_ledger(segment))
+            ledgers.append(_ledger(segment, account=current_account))
     if not header_found:
         raise IngestionFailure(
             "cash_ledger_header_not_found",

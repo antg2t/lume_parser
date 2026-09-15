@@ -12,7 +12,7 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
 from lume_ingestion.errors import IngestionFailure
-from lume_ingestion.bank_statement import recognize_itau_bank_statement
+from lume_ingestion.bank_statement import recognize_bank_statement
 from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
 from lume_ingestion.parsers.nfse_pdf import is_national_danfse
@@ -163,7 +163,7 @@ class PdfTextParser:
 
         metadata = {str(key).lstrip("/"): _json_safe(value) for key, value in (reader.metadata or {}).items()}
         nfse_recognition = is_national_danfse(pages)
-        bank_statement_recognition = recognize_itau_bank_statement(pages)
+        bank_statement_recognition = recognize_bank_statement(pages)
         cash_ledger_recognition = recognize_cash_ledger_pdf(pages)
         recognition = nfse_recognition or bank_statement_recognition or cash_ledger_recognition
         document_type = (

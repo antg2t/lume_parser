@@ -15,6 +15,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_ROOT = PROJECT_ROOT / "docs"
 ITAU_PDF = next(DOCS_ROOT.glob("Extrato/pdf/*Itau*.pdf"))
 CASH_LEDGER_PDF = next(DOCS_ROOT.glob("Controle de caixa/pdf/*.pdf"))
+BRADESCO_PDF = DOCS_ROOT / "Clientes" / "Vanguarda" / "Extrato Agosto Vanguarda Bradesco.PDF"
+LUFTKLIM_XLSX = DOCS_ROOT / "Clientes" / "LUFTKLIM" / "49-08-2026 - Extrato até 25-08.xlsx"
+MARTINE_XLS = DOCS_ROOT / "Clientes" / "Martine" / "18-08-2026 - Extrato Bradesco.xls"
 GOLDEN = json.loads((Path(__file__).parent / "goldens" / "bank_statement_itau.json").read_text(encoding="utf-8"))
 TRANSACTION_FIELDS = (
     "date",
@@ -114,6 +117,60 @@ def test_itau_classification_uses_content_not_the_source_name(tmp_path: Path) ->
     assert result.success, result.errors
     assert result.document_type == "bank_statement"
     assert result.data["bank"] == "Itaú"
+
+
+@pytest.mark.integration
+def test_bradesco_statement_is_normalized_and_reconciled(tmp_path: Path) -> None:
+    result = run_pipeline(BRADESCO_PDF, tmp_path / "output")
+
+    assert result.success, result.errors
+    assert result.document_type == "bank_statement"
+    assert result.data["bank"] == "Bradesco"
+    assert len(result.data["transactions"]) == 88
+    assert result.data["initial_balance"] == "460863.74"
+    assert result.data["final_balance"] == "74.01"
+    assert not result.warnings
+
+
+@pytest.mark.integration
+def test_itau_spreadsheet_statement_is_normalized_with_auditable_rows(tmp_path: Path) -> None:
+    result = run_pipeline(LUFTKLIM_XLSX, tmp_path / "output")
+
+    assert result.success, result.errors
+    assert result.source_format == "xlsx"
+    assert result.document_type == "bank_statement"
+    assert result.data["bank"] == "Itaú"
+    assert result.data["branch"] == "0191"
+    assert result.data["account"] == "0041707-0"
+    assert result.data["period_start"] == "2026-08-01"
+    assert result.data["period_end"] == "2026-08-25"
+    assert len(result.data["transactions"]) == 352
+    assert len(result.data["daily_balances"]) == 17
+    assert result.data["transactions"][0]["counterparty"] == "GRAND BELLAGIO PARTICIPACOES SOCIETARIAS LTDA"
+    assert result.data["transactions"][0]["origin"]["source_format"] == "xlsx"
+    assert result.data["transactions"][0]["origin"]["cell_refs"] == ["A12", "B12", "C12", "D12", "E12"]
+    # The provider prints a final balance for 25/08 without a movement for
+    # that day, so it must remain visible as an explicit reconciliation warning.
+    assert [warning.code for warning in result.warnings] == ["bank_balance_mismatch"]
+
+
+@pytest.mark.integration
+def test_bradesco_legacy_xls_is_normalized_without_appending_the_next_period(tmp_path: Path) -> None:
+    result = run_pipeline(MARTINE_XLS, tmp_path / "output")
+
+    assert result.success, result.errors
+    assert result.source_format == "xls"
+    assert result.document_type == "bank_statement"
+    assert result.data["bank"] == "Bradesco"
+    assert result.data["branch"] == "1074"
+    assert result.data["account"] == "45291-2"
+    assert result.data["period_start"] == "2026-08-03"
+    assert result.data["period_end"] == "2026-08-31"
+    assert len(result.data["transactions"]) == 311
+    assert not result.warnings
+    assert result.data["transactions"][0]["amount"] == "2592.47"
+    assert result.data["transactions"][0]["origin"]["source_format"] == "xls"
+    assert result.data["transactions"][-1]["date"] == "2026-08-31"
 
 
 @pytest.mark.integration

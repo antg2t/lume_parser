@@ -311,8 +311,11 @@ class AccountingHistory(JsonModel):
 class BankStatementOrigin(JsonModel):
     """Evidencia espacial de uma linha impressa no extrato bancario."""
 
-    source_format: Literal["pdf"] = "pdf"
-    page_number: int = Field(ge=1)
+    source_format: Literal["pdf", "xlsx", "xls"] = "pdf"
+    page_number: int | None = Field(default=None, ge=1)
+    sheet: str | None = None
+    row_number: int | None = Field(default=None, ge=1)
+    cell_refs: list[str] = Field(default_factory=list)
     region: dict[str, float]
     excerpt: str
 

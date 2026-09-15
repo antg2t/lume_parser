@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "clients": [
+    {
+      "client_id": "luftklim",
+      "chart": "../docs/Plano de conta/Plano de Contas Completo_v2.xlsx",
+      "history": [
+        "../docs/Historico contabil/LUFTKLIM_2026_Lctos.xlsx"
+      ]
+    },
+    {
+      "client_id": "martine",
+      "chart": "../docs/Plano de conta/Plano de Contas Completo_v2.xlsx",
+      "history": [
+        "../docs/Historico contabil/MARTINE_2026_Lctos_Jan_Jul.xlsx"
+      ]
+    },
+    {
+      "client_id": "vanguarda",
+      "chart": "../docs/Plano de conta/Plano de Contas Completo_v2.xlsx",
+      "history": [
+        "../docs/Historico contabil/VANGUARD_2026_Lctos_Contimatic.xlsx",
+        "../docs/Clientes/Vanguarda/Vanguarda_Lançamento_Agosto_2026.xlsx"
+      ]
+    }
+  ]
+}

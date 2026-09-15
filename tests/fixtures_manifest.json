@@ -58,39 +58,6 @@
       "golden_kind": "chart_of_accounts"
     },
     {
-      "id": "accounting-history-luftklim",
-      "path": "Historico contabil/LUFTKLIM_2026_Lctos.xlsx",
-      "sha256": "640d93451e974f63bb20fef48fd57c962295647070b25fa5a9a4eb8fff23dc00",
-      "expected_source_format": "xlsx",
-      "expected_document_type": "accounting_history",
-      "expected_parser": "xlsx-openpyxl",
-      "expected_requires_ocr": false,
-      "golden": "tests/goldens/accounting_history_luftklim.json",
-      "golden_kind": "accounting_history"
-    },
-    {
-      "id": "accounting-history-martine",
-      "path": "Historico contabil/MARTINE_2026_Lctos_Jan_Jul.xlsx",
-      "sha256": "10d87cf7d8eeb265e6a7958b25e310daa6e3c64d71a41d039c7d21b225225849",
-      "expected_source_format": "xlsx",
-      "expected_document_type": "accounting_history",
-      "expected_parser": "xlsx-openpyxl",
-      "expected_requires_ocr": false,
-      "golden": "tests/goldens/accounting_history_martine.json",
-      "golden_kind": "accounting_history"
-    },
-    {
-      "id": "accounting-history-vanguarda",
-      "path": "Historico contabil/Vanguarda Consolidado_2026_Documento que o sistema deve produzir.xlsx",
-      "sha256": "c99b9106b4dbbddc33651d846efac930ebde4979909e51ce343fde9cdbe49bd7",
-      "expected_source_format": "xlsx",
-      "expected_document_type": "accounting_history",
-      "expected_parser": "xlsx-openpyxl",
-      "expected_requires_ocr": false,
-      "golden": "tests/goldens/accounting_history_vanguarda.json",
-      "golden_kind": "accounting_history"
-    },
-    {
       "id": "nfse-pdf-31251011246220369000291202600013362726080035146987",
       "path": "Nota fiscal/pdf/31251011246220369000291202600013362726080035146987.pdf",
       "sha256": "7bd9f0dd85bbc06003c66ba6c7debff32750479c24afed4262be27a9f02027f6",

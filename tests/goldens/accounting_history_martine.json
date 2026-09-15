@@ -1,6 +1,0 @@
-{
-  "entry_count": 3622,
-  "entries_sha256": "48561d1d1b017e2448e9778e64551a0ce28ecc1695a4a9a0f091838890aaf7c3",
-  "first_entry": {"entry_number": "1", "date": "2026-01-01", "debit_account": "2000191", "credit_account": "2000189", "amount": "3937514.73", "standard_history": null, "complement": "Transf.p/Melhor Classifica��o Contabil", "debit_cost_center": null, "credit_cost_center": null, "tax_id": null},
-  "last_entry": {"entry_number": "2327", "date": "2026-07-31", "debit_account": "2000192", "credit_account": "1000040", "amount": "48557.31", "standard_history": null, "complement": "Distrib.de Resultados Apurados no M�s 07/2026", "debit_cost_center": null, "credit_cost_center": null, "tax_id": null}
-}

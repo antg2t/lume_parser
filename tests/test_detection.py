@@ -36,3 +36,13 @@ def test_empty_file_has_structured_error(tmp_path: Path) -> None:
         FileTypeDetector().inspect(empty)
 
     assert captured.value.code == "empty_file"
+
+
+@pytest.mark.integration
+def test_detector_recognizes_legacy_xls_by_its_compound_file_signature() -> None:
+    source = Path(__file__).resolve().parents[1] / "docs" / "Clientes" / "Martine" / "18-08-2026 - Extrato Bradesco.xls"
+
+    result = FileTypeDetector().inspect(source)
+
+    assert result.format == "xls"
+    assert result.source.media_type == "application/vnd.ms-excel"

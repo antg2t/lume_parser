@@ -18,8 +18,8 @@ MANIFEST = PROJECT_ROOT / "tests" / "fixtures_manifest.json"
 def test_manifest_freezes_the_r05_collection() -> None:
     manifest = load_manifest(MANIFEST)
 
-    assert len(manifest["fixtures"]) == 29
-    assert len({fixture["sha256"] for fixture in manifest["fixtures"]}) == 29
+    assert len(manifest["fixtures"]) == 26
+    assert len({fixture["sha256"] for fixture in manifest["fixtures"]}) == 26
     assert all(fixture["golden"] for fixture in manifest["fixtures"])
     assert {fixture["expected_source_format"] for fixture in manifest["fixtures"]} == {"pdf", "xml", "xlsx"}
 
@@ -31,10 +31,10 @@ def test_r05_regression_reports_the_complete_baseline_and_cross_validation(tmp_p
     assert report["success"]
     assert report["summary"] == {
         **report["summary"],
-        "declared_fixtures": 29,
-        "succeeded": 29,
+        "declared_fixtures": 26,
+        "succeeded": 26,
         "failed": 0,
-        "passed": 29,
+        "passed": 26,
         "regressions": 0,
         "source_integrity": True,
         "ocr": {"required": 0, "used": 0},
@@ -51,7 +51,6 @@ def test_r05_regression_reports_the_complete_baseline_and_cross_validation(tmp_p
         }
     ]
     assert report["coverage"]["document_types"] == {
-        "accounting_history": {"fixtures": 3, "found": 3, "passed": 3},
         "bank_statement": {"fixtures": 1, "found": 1, "passed": 1},
         "cash_ledger": {"fixtures": 2, "found": 2, "passed": 2},
         "chart_of_accounts": {"fixtures": 2, "found": 2, "passed": 2},

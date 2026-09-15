@@ -316,6 +316,25 @@ def recognize_itau_bank_statement(pages: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def _page_text(page: dict[str, Any]) -> str:
+    text = page.get("text", "")
+    if isinstance(text, dict):
+        return str(text.get("layout") or text.get("basic") or "")
+    return str(text or "")
+
+
+def recognize_bradesco_bank_statement(pages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    combined = fold_text(" ".join(_page_text(page) for page in pages if isinstance(page, dict)))
+    required = ("EXTRATODE", "SALDOANTERIOR", "CREDITOR", "DEBITOR", "AGENCIA", "CONTA")
+    if not all(label in combined for label in required):
+        return None
+    return {"adapter": "bradesco-bank-statement-v1", "bank": "Bradesco", "layout": "monthly-v1", "page_number": 1}
+
+
+def recognize_bank_statement(pages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    return recognize_itau_bank_statement(pages) or recognize_bradesco_bank_statement(pages)
+
+
 def _attach_fragments(rows: list[StatementRow], lines: list[StatementLine], pending: list[Fragment], ordinal: int) -> tuple[list[Fragment], int]:
     transaction_rows = [row for row in rows if row.kind == "transaction"]
     if pending and transaction_rows:
@@ -487,3 +506,106 @@ def normalize_itau_bank_statement(raw: dict[str, Any]) -> tuple[BankStatement, l
     )
     warnings.extend(reconcile_bank_statement(statement))
     return statement, warnings
+
+
+def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatement, list[Warning]]:
+    pages = raw.get("pages")
+    if not isinstance(pages, list) or not pages:
+        raise IngestionFailure("invalid_raw", "O RAW PDF nao possui paginas para o extrato bancario.")
+    recognition = recognize_bradesco_bank_statement(pages)
+    if recognition is None:
+        raise IngestionFailure("unsupported_bank_statement_layout", "O RAW nao corresponde ao layout Bradesco suportado.")
+
+    date_prefix = re.compile(r"^(\d{2}/\d{2}/\d{4})(.*)$")
+    movement = re.compile(r"(-?\d{1,3}(?:\.\d{3})*,\d{2})\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})$")
+    period_pattern = re.compile(r"Entre\s+(\d{2}/\d{2}/\d{4})\s+e\s+(\d{2}/\d{2}/\d{4})", re.I)
+    account_pattern = re.compile(r"Extrato\s+de:\s*Ag:\s*(\d+)\s*\|\s*CC:\s*([\d-]+)", re.I)
+    pending: list[str] = []
+    transactions: list[BankStatementTransaction] = []
+    initial_balance: Decimal | None = None
+    current_date: date | None = None
+    combined = "\n".join(_page_text(page) for page in pages if isinstance(page, dict))
+    period_match, account_match = period_pattern.search(combined), account_pattern.search(combined)
+
+    for page in pages:
+        page_number = int(page.get("page_number", 1))
+        for line_number, raw_line in enumerate(_page_text(page).splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if match := date_prefix.match(line):
+                current_date = parse_date(match.group(1))
+                line = match.group(2).strip()
+            if "SALDOANTERIOR" in fold_text(line):
+                values = re.findall(r"-?\d{1,3}(?:\.\d{3})*,\d{2}", line)
+                if values and initial_balance is None:
+                    initial_balance = parse_money(values[-1])
+                pending.clear()
+                continue
+            if fold_text(line).startswith(("TOTAL", "DATALANCAMENTO", "OSDADOS", "FOLHA")):
+                pending.clear()
+                continue
+            match = movement.search(line)
+            if match and current_date:
+                amount, balance = parse_money(match.group(1)), parse_money(match.group(2))
+                if amount is None or balance is None:
+                    continue
+                description = clean_text(" ".join([*pending, line[: match.start()]]))
+                origin = BankStatementOrigin(
+                    page_number=page_number,
+                    region={"x0": 0.0, "x1": 596.0, "top": float(line_number), "bottom": float(line_number + 1)},
+                    excerpt=line,
+                )
+                transactions.append(BankStatementTransaction(
+                    date=current_date,
+                    description=description,
+                    document=None,
+                    amount=amount,
+                    transaction_type="credit" if amount >= 0 else "debit",
+                    balance=balance,
+                    origin=origin,
+                ))
+                pending.clear()
+            elif not any(marker in fold_text(line) for marker in ("EXTRATOMENSAL", "NOMEDOUSUARIO", "SALDOSINVEST")):
+                pending.append(line)
+
+    # ponytail: this layout repeats the last movement at the next page; a boundary-only suffix match is enough here.
+    unique: list[BankStatementTransaction] = []
+    for transaction in transactions:
+        boundary_repeat = float(transaction.origin.region.get("top", 99)) <= 5 and any(
+            previous.origin.page_number == transaction.origin.page_number - 1
+            and previous.date == transaction.date
+            and previous.amount == transaction.amount
+            and (previous.description or "").endswith(transaction.description or "")
+            for previous in unique
+        )
+        if not boundary_repeat:
+            unique.append(transaction)
+    last_by_date = {transaction.date: transaction for transaction in unique}
+    daily_balances = [
+        BankStatementDailyBalance(date=day, balance=transaction.balance, origin=transaction.origin)
+        for day, transaction in sorted(last_by_date.items())
+        if transaction.balance is not None
+    ]
+    statement = BankStatement(
+        bank=str(recognition["bank"]),
+        layout=str(recognition["layout"]),
+        branch=account_match.group(1) if account_match else None,
+        account=account_match.group(2) if account_match else None,
+        period_start=parse_date(period_match.group(1)) if period_match else None,
+        period_end=parse_date(period_match.group(2)) if period_match else None,
+        initial_balance=initial_balance,
+        final_balance=daily_balances[-1].balance if daily_balances else None,
+        transactions=unique,
+        daily_balances=daily_balances,
+    )
+    warnings = reconcile_bank_statement(statement)
+    return statement, warnings
+
+
+def normalize_bank_statement(raw: dict[str, Any]) -> tuple[BankStatement, list[Warning]]:
+    pages = raw.get("pages")
+    recognition = recognize_bank_statement(pages if isinstance(pages, list) else [])
+    if recognition and recognition["adapter"].startswith("bradesco"):
+        return normalize_bradesco_bank_statement(raw)
+    return normalize_itau_bank_statement(raw)

@@ -24,6 +24,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import SourceFile, Warning
 from lume_ingestion.accounting import recognize_xlsx_document_type
+from lume_ingestion.bank_statement_spreadsheet import recognize_spreadsheet_bank_statement
 
 
 _MAIN_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -71,7 +72,7 @@ def _merged_cells(path: Path) -> dict[str, list[str]]:
 def _used_columns(sheet: Any) -> int:
     """Ignore producer-added empty columns without losing populated headers."""
 
-    return max((cell.column for row in sheet.iter_rows(max_row=min(sheet.max_row, 100)) for cell in row if cell.value is not None), default=1)
+    return max((cell.column for row in sheet.iter_rows(max_row=min(sheet.max_row or 100, 100)) for cell in row if cell.value is not None), default=1)
 
 
 class XlsxParser:
@@ -178,11 +179,13 @@ class XlsxParser:
         formula_book.close()
         cached_book.close()
 
-        return {
+        document_type = recognize_xlsx_document_type(sheets)
+        recognition = None if document_type else recognize_spreadsheet_bank_statement(sheets)
+        raw = {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
             "source_format": "xlsx",
-            "document_type": recognize_xlsx_document_type(sheets) or "cash_ledger",
+            "document_type": document_type or ("bank_statement" if recognition else "cash_ledger"),
             "parser": self.name,
             "parser_version": self.version,
             "extraction_duration_ms": round((perf_counter() - started) * 1000),
@@ -190,3 +193,6 @@ class XlsxParser:
             "warnings": [warning.model_dump(mode="json") for warning in warnings],
             "errors": [],
         }
+        if recognition:
+            raw["document_recognition"] = recognition
+        return raw

@@ -1,5 +1,7 @@
 # Plano de implementação — predição de conta de débito e crédito
 
+> **Premissa revisada e implementada:** os clientes usam, em geral, o mesmo plano semântico, mas os números das contas podem variar. A implementação vigente não usa o código como rótulo global: prevê uma identidade derivada da descrição e do caminho hierárquico, e o plano de cada cliente traduz essa identidade para o código local. A direção do movimento também entra no modelo. As seções abaixo documentam a prova de conceito anterior, baseada apenas em complemento → código. A fonte de verdade e os comandos atuais estão em `docs/GUIA-MOTOR-CONTABIL-DETERMINISTICO.md`; o código vigente está em `src/lume_ingestion/global_account_model.py`.
+
 ## 1. Objetivo
 
 Construir uma camada assistiva que receba apenas o texto do campo `complemento` de um lançamento contábil e devolva duas sugestões independentes:
