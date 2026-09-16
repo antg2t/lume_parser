@@ -70,9 +70,9 @@ de importação por hash.
 
 - Não há API, banco, autenticação, tela de revisão, exportador final nem
   dashboard neste pacote.
-- OCR só entra quando a página não tem texto útil (CID sem ToUnicode ou
-  impressão PDFCreator em paths/imagem). Não é OCR genérico de NFS-e. Os
-  adapters de extrato continuam `itau-digital-bank-statement-v1` e
+- Se o parser de texto não reconhece o extrato, o fallback é visão xAI
+  (`XAI_API_KEY` no host). NFS-e e caixa nativos não passam por isso. Os
+  adapters continuam `itau-digital-bank-statement-v1` e
   `bradesco-bank-statement-v1`.
 - Não há OFX/QFX, CSV genérico ou suporte universal a XLS/XLSX. Cada novo
   layout precisa de um adaptador reconhecido por conteúdo e coberto por
