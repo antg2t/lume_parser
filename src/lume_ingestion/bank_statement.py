@@ -604,6 +604,12 @@ def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatemen
 
 
 def normalize_bank_statement(raw: dict[str, Any]) -> tuple[BankStatement, list[Warning]]:
+    ai_payload = raw.get("ai_statement")
+    if isinstance(ai_payload, dict):
+        from lume_ingestion.parsers.pdf_ai import statement_from_ai, vision_warning
+
+        statement = statement_from_ai(ai_payload)
+        return statement, [vision_warning(), *reconcile_bank_statement(statement)]
     pages = raw.get("pages")
     recognition = recognize_bank_statement(pages if isinstance(pages, list) else [])
     if recognition and recognition["adapter"].startswith("bradesco"):

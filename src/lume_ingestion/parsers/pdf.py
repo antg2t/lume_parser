@@ -16,12 +16,12 @@ from lume_ingestion.bank_statement import recognize_bank_statement
 from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
 from lume_ingestion.parsers.nfse_pdf import is_national_danfse
-from lume_ingestion.parsers.pdf_recover import (
-    page_needs_recovery,
-    recover_page,
-    tesseract_available,
-    valid_character_ratio,
+from lume_ingestion.parsers.pdf_ai import (
+    extract_bank_statement_with_xai,
+    vision_recognition,
+    vision_warning,
 )
+from lume_ingestion.parsers.pdf_recover import valid_character_ratio
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,7 @@ def _classification(metrics: list[PageMetrics]) -> tuple[str, bool]:
 
 class PdfTextParser:
     name = "pdf-text"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def extract(
         self,
@@ -154,71 +154,7 @@ class PdfTextParser:
         except Exception as exc:
             raise IngestionFailure("pdf_layout_extraction_failed", "Falha ao extrair o layout do PDF.", reason=str(exc)) from exc
 
-        recovered_any = False
-        recovery_attempted = False
-        for index, page in enumerate(pages):
-            if not page_needs_recovery(
-                page,
-                minimum_useful_characters=limits.minimum_useful_characters,
-                minimum_valid_ratio=limits.minimum_valid_ratio,
-            ):
-                continue
-            recovery_attempted = True
-            try:
-                box = reader.pages[index].mediabox
-            except (IndexError, TypeError, ValueError):
-                continue
-            recovered = recover_page(
-                content,
-                index,
-                page_width=float(box.width),
-                page_height=float(box.height),
-            )
-            if recovered is None:
-                continue
-            page["text"] = {"basic": recovered.layout_text, "layout": recovered.layout_text}
-            page["words"] = recovered.words
-            page["recovery"] = recovered.method
-            metric_text = recovered.layout_text
-            ratio = valid_character_ratio(metric_text)
-            word_count = len(re.findall(r"\S+", metric_text))
-            has_useful_text = (
-                len(metric_text) >= limits.minimum_useful_characters
-                and ratio >= limits.minimum_valid_ratio
-            )
-            metric = PageMetrics(
-                page_number=index + 1,
-                characters=len(metric_text),
-                words=word_count,
-                valid_character_ratio=ratio,
-                image_count=int(page["metrics"].get("image_count") or 0),
-                has_images=bool(page["metrics"].get("has_images")),
-                has_useful_text=has_useful_text,
-            )
-            metrics[index] = metric
-            page["metrics"] = metric.model_dump(mode="json")
-            recovered_any = True
-            warnings.append(
-                Warning(
-                    code="ocr_applied",
-                    message="Texto util recuperado por OCR nesta pagina digitalizada.",
-                    details={"page_number": index + 1, "method": recovered.method},
-                )
-            )
-
         classification, requires_ocr = _classification(metrics)
-        if requires_ocr and not recovered_any:
-            warnings.append(
-                Warning(
-                    code="ocr_recommended" if tesseract_available() or not recovery_attempted else "ocr_unavailable",
-                    message=(
-                        "Uma ou mais paginas nao possuem texto util; OCR e recomendado, mas nao foi executado."
-                        if tesseract_available() or not recovery_attempted
-                        else "Uma ou mais paginas nao possuem texto util e o Tesseract nao esta disponivel."
-                    ),
-                )
-            )
-
         metadata = {str(key).lstrip("/"): _json_safe(value) for key, value in (reader.metadata or {}).items()}
         nfse_recognition = is_national_danfse(pages)
         bank_statement_recognition = recognize_bank_statement(pages)
@@ -233,6 +169,23 @@ class PdfTextParser:
             if cash_ledger_recognition
             else None
         )
+        ai_statement = None
+        if document_type is None:
+            extracted = extract_bank_statement_with_xai(content)
+            if extracted is not None:
+                statement, payload = extracted
+                ai_statement = payload
+                recognition = vision_recognition(statement)
+                document_type = "bank_statement"
+                requires_ocr = False
+                warnings.append(vision_warning())
+        elif requires_ocr:
+            warnings.append(
+                Warning(
+                    code="ocr_recommended",
+                    message="Uma ou mais paginas nao possuem texto util; OCR nao e usado nesta release.",
+                )
+            )
         return {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
@@ -245,6 +198,7 @@ class PdfTextParser:
             "classification": classification,
             "requires_ocr": requires_ocr,
             "document_recognition": recognition,
+            "ai_statement": ai_statement,
             "pages": pages,
             "warnings": [warning.model_dump(mode="json") for warning in warnings],
             "errors": [],

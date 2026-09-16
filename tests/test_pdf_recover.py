@@ -101,29 +101,9 @@ def test_ocr_image_reads_bank_labels() -> None:
     assert "SALDOANTERIOR" in folded
 
 
-@pytest.mark.skipif(not tesseract_available() or not FONT.exists(), reason="tesseract/fonte ausentes")
-def test_image_pdf_with_bradesco_labels_becomes_bank_statement(tmp_path: Path) -> None:
-    pdf_path = _image_pdf(
-        [
-            "Extrato Mensal / Por Periodo",
-            "bradesco",
-            "Extrato de: Ag: 214 | CC: 0082378-3",
-            "Entre 01/02/2026 e 28/02/2026",
-            "Agencia | Conta     Credito (R$)     Debito (R$)     Saldo (R$)",
-            "31/01/2026 SALDO ANTERIOR                                   1.000,00",
-            "02/02/2026 TED RECEBIDA              100,00                 1.100,00",
-        ],
-        tmp_path,
-    )
-    result = run_pipeline(pdf_path, tmp_path / "output")
-    assert result.document_type == "bank_statement"
-    assert result.data.get("bank") == "Bradesco"
-    assert result.data.get("layout") == "monthly-v1"
-    assert len(result.data.get("transactions") or []) > 0
-
-
-@pytest.mark.skipif(not tesseract_available() or not FONT.exists(), reason="tesseract/fonte ausentes")
-def test_image_pdf_without_bank_labels_is_not_a_statement(tmp_path: Path) -> None:
+def test_image_pdf_without_bank_labels_is_not_a_statement(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.setattr("lume_ingestion.parsers.pdf.extract_bank_statement_with_xai", lambda *_args, **_kwargs: None)
     pdf_path = _image_pdf(["Nota fiscal de servico nacional", "Tomador e prestador", "ISS 2,00"], tmp_path)
     result = run_pipeline(pdf_path, tmp_path / "output")
     assert result.document_type != "bank_statement"
@@ -137,7 +117,7 @@ def test_native_text_pdf_does_not_mark_ocr_applied(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not ITAU_FEB.exists(), reason="fixture privada Itaú fev ausente")
+@pytest.mark.skipif(not ITAU_FEB.exists() or not __import__("os").environ.get("XAI_API_KEY"), reason="fixture Itaú ou XAI_API_KEY ausente")
 def test_vanguarda_february_itau_pdfcreator(tmp_path: Path) -> None:
     result = run_pipeline(ITAU_FEB, tmp_path / "output")
     assert result.success, result.errors
@@ -148,10 +128,11 @@ def test_vanguarda_february_itau_pdfcreator(tmp_path: Path) -> None:
 
     raw = read_json(result.outputs.raw_json)
     assert raw["document_recognition"]["adapter"] == "itau-digital-bank-statement-v1"
+    assert any(warning.code == "xai_vision_applied" for warning in result.warnings)
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not BRADESCO_FEB.exists(), reason="fixture privada Bradesco fev ausente")
+@pytest.mark.skipif(not BRADESCO_FEB.exists() or not __import__("os").environ.get("XAI_API_KEY"), reason="fixture Bradesco ou XAI_API_KEY ausente")
 def test_vanguarda_february_bradesco_pdfcreator(tmp_path: Path) -> None:
     result = run_pipeline(BRADESCO_FEB, tmp_path / "output")
     assert result.success, result.errors
