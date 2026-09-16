@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
@@ -11,6 +12,7 @@ import urllib.error
 import urllib.request
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 from lume_ingestion.models import (
@@ -25,6 +27,40 @@ _DEFAULT_BASE = "https://api.x.ai/v1"
 _DEFAULT_MODEL = "grok-4.3"
 _MAX_PAGES = 12
 _RENDER_DPI = 160
+_DEFAULT_CACHE = Path.home() / ".cache" / "lume-ingestion" / "xai"
+
+
+def cache_dir() -> Path:
+    override = os.environ.get("XAI_CACHE_DIR", "").strip()
+    if override:
+        return Path(override)
+    host = Path("/var/lib/lume/xai-cache")
+    if host.parent.exists() and os.access(host.parent, os.W_OK):
+        return host
+    return _DEFAULT_CACHE
+
+
+def cache_path(content: bytes, model: str) -> Path:
+    digest = hashlib.sha256(content).hexdigest()
+    safe_model = re.sub(r"[^a-zA-Z0-9._-]+", "_", model.strip()) or "model"
+    return cache_dir() / f"{digest}.{safe_model}.json"
+
+
+def load_cached_statement(content: bytes, model: str) -> dict[str, Any] | None:
+    path = cache_path(content, model)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def save_cached_statement(content: bytes, model: str, payload: dict[str, Any]) -> None:
+    path = cache_path(content, model)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 _PROMPT = """Leia o extrato bancario brasileiro nestas paginas (Itaú ou Bradesco).
 Devolva SOMENTE JSON valido, sem markdown, neste formato:
 {
@@ -265,10 +301,19 @@ def extract_bank_statement_with_xai(
     base_url: str | None = None,
     post=None,
 ) -> tuple[BankStatement, dict[str, Any]] | None:
+    chosen_model = (model or os.environ.get("XAI_MODEL") or _DEFAULT_MODEL).strip()
+    cached = load_cached_statement(content, chosen_model)
+    if cached is not None:
+        try:
+            statement = statement_from_ai(cached)
+        except Exception:
+            statement = None  # type: ignore[assignment]
+        else:
+            if statement.transactions and statement.bank in {"Itaú", "Bradesco"}:
+                return statement, cached
     key = (api_key if api_key is not None else os.environ.get("XAI_API_KEY", "")).strip()
     if not key:
         return None
-    chosen_model = (model or os.environ.get("XAI_MODEL") or _DEFAULT_MODEL).strip()
     chosen_base = (base_url or os.environ.get("XAI_API_BASE") or _DEFAULT_BASE).strip()
     try:
         images = render_pdf_jpegs(content)
@@ -282,6 +327,10 @@ def extract_bank_statement_with_xai(
         return None
     if not statement.transactions or statement.bank not in {"Itaú", "Bradesco"}:
         return None
+    try:
+        save_cached_statement(content, chosen_model, payload)
+    except OSError:
+        pass
     return statement, payload
 
 

@@ -62,7 +62,7 @@ def _classification(metrics: list[PageMetrics]) -> tuple[str, bool]:
 
 class PdfTextParser:
     name = "pdf-text"
-    version = "0.3.0"
+    version = "0.3.1"
 
     def extract(
         self,

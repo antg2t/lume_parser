@@ -72,6 +72,45 @@ def test_extract_uses_injected_post_and_rejects_unknown_bank(monkeypatch) -> Non
     assert result is None
 
 
+def test_second_extract_reuses_disk_cache(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XAI_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr("lume_ingestion.parsers.pdf_ai.render_pdf_jpegs", lambda *_a, **_k: [b"jpeg"])
+    calls = {"n": 0}
+
+    def fake_post(images, **_kwargs):
+        calls["n"] += 1
+        return json.dumps(
+            {
+                "bank": "Itaú",
+                "initial_balance": "0.00",
+                "transactions": [
+                    {"date": "2026-02-02", "description": "PIX", "amount": "-10.00", "page_number": 1}
+                ],
+            }
+        )
+
+    first = extract_bank_statement_with_xai(b"%PDF-cache", api_key="xai-test", post=fake_post)
+    second = extract_bank_statement_with_xai(b"%PDF-cache", api_key="xai-test", post=fake_post)
+    assert first is not None and second is not None
+    assert calls["n"] == 1
+    assert second[0].transactions[0].amount == Decimal("-10.00")
+
+
+def test_cache_hit_does_not_need_api_key(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XAI_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    from lume_ingestion.parsers import pdf_ai
+
+    payload = {
+        "bank": "Bradesco",
+        "transactions": [{"date": "2026-02-02", "description": "TED", "amount": "100.00", "page_number": 1}],
+    }
+    pdf_ai.save_cached_statement(b"%PDF-hit", "grok-4.3", payload)
+    result = extract_bank_statement_with_xai(b"%PDF-hit", api_key="")
+    assert result is not None
+    assert result[0].bank == "Bradesco"
+
+
 def test_extract_accepts_itau_payload(monkeypatch) -> None:
     def fake_render(_content, **_kwargs):
         return [b"fake-jpeg"]
