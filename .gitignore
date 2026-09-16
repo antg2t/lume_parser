@@ -9,3 +9,5 @@ docs/Controle de caixa/
 docs/Extrato/
 docs/Plano de conta/
 docs/Historico contabil/
+tests/fixtures/private/*.pdf
+tests/fixtures/private/*.PDF

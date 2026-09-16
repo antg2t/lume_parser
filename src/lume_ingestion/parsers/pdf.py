@@ -16,6 +16,12 @@ from lume_ingestion.bank_statement import recognize_bank_statement
 from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
 from lume_ingestion.parsers.nfse_pdf import is_national_danfse
+from lume_ingestion.parsers.pdf_recover import (
+    page_needs_recovery,
+    recover_page,
+    tesseract_available,
+    valid_character_ratio,
+)
 
 
 @dataclass(frozen=True)
@@ -32,11 +38,7 @@ def _clean_text(text: str | None) -> str:
 
 
 def _valid_character_ratio(text: str) -> float:
-    significant = [character for character in text if not character.isspace()]
-    if not significant:
-        return 0.0
-    valid = sum(character.isprintable() and character != "\ufffd" for character in significant)
-    return round(valid / len(significant), 6)
+    return valid_character_ratio(text)
 
 
 def _json_safe(value: Any) -> Any:
@@ -60,7 +62,7 @@ def _classification(metrics: list[PageMetrics]) -> tuple[str, bool]:
 
 class PdfTextParser:
     name = "pdf-text"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def extract(
         self,
@@ -152,12 +154,65 @@ class PdfTextParser:
         except Exception as exc:
             raise IngestionFailure("pdf_layout_extraction_failed", "Falha ao extrair o layout do PDF.", reason=str(exc)) from exc
 
-        classification, requires_ocr = _classification(metrics)
-        if requires_ocr:
+        recovered_any = False
+        recovery_attempted = False
+        for index, page in enumerate(pages):
+            if not page_needs_recovery(
+                page,
+                minimum_useful_characters=limits.minimum_useful_characters,
+                minimum_valid_ratio=limits.minimum_valid_ratio,
+            ):
+                continue
+            recovery_attempted = True
+            box = reader.pages[index].mediabox
+            recovered = recover_page(
+                content,
+                index,
+                page_width=float(box.width),
+                page_height=float(box.height),
+            )
+            if recovered is None:
+                continue
+            page["text"] = {"basic": recovered.layout_text, "layout": recovered.layout_text}
+            page["words"] = recovered.words
+            page["recovery"] = recovered.method
+            metric_text = recovered.layout_text
+            ratio = valid_character_ratio(metric_text)
+            word_count = len(re.findall(r"\S+", metric_text))
+            has_useful_text = (
+                len(metric_text) >= limits.minimum_useful_characters
+                and ratio >= limits.minimum_valid_ratio
+            )
+            metric = PageMetrics(
+                page_number=index + 1,
+                characters=len(metric_text),
+                words=word_count,
+                valid_character_ratio=ratio,
+                image_count=int(page["metrics"].get("image_count") or 0),
+                has_images=bool(page["metrics"].get("has_images")),
+                has_useful_text=has_useful_text,
+            )
+            metrics[index] = metric
+            page["metrics"] = metric.model_dump(mode="json")
+            recovered_any = True
             warnings.append(
                 Warning(
-                    code="ocr_recommended",
-                    message="Uma ou mais paginas nao possuem texto util; OCR e recomendado, mas nao foi executado.",
+                    code="ocr_applied",
+                    message="Texto util recuperado por OCR nesta pagina digitalizada.",
+                    details={"page_number": index + 1, "method": recovered.method},
+                )
+            )
+
+        classification, requires_ocr = _classification(metrics)
+        if requires_ocr and not recovered_any:
+            warnings.append(
+                Warning(
+                    code="ocr_recommended" if tesseract_available() or not recovery_attempted else "ocr_unavailable",
+                    message=(
+                        "Uma ou mais paginas nao possuem texto util; OCR e recomendado, mas nao foi executado."
+                        if tesseract_available() or not recovery_attempted
+                        else "Uma ou mais paginas nao possuem texto util e o Tesseract nao esta disponivel."
+                    ),
                 )
             )
 
