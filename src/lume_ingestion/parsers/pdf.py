@@ -164,7 +164,10 @@ class PdfTextParser:
             ):
                 continue
             recovery_attempted = True
-            box = reader.pages[index].mediabox
+            try:
+                box = reader.pages[index].mediabox
+            except (IndexError, TypeError, ValueError):
+                continue
             recovered = recover_page(
                 content,
                 index,

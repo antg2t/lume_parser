@@ -180,6 +180,7 @@ def _render_with_pdftoppm(content: bytes, page_index: int, dpi: int) -> Any:
             ],
             check=True,
             capture_output=True,
+            timeout=30,
         )
         rendered = sorted(Path(tmp).glob("out*.png"))
         if not rendered:
