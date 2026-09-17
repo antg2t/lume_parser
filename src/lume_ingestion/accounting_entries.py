@@ -137,7 +137,13 @@ Fallback = Callable[[CashEvent, str], AccountChoice | None]
 
 
 class AccountingEntryEngine:
-    def __init__(self, base: AccountingBase, period: str, fallback: Fallback | None = None):
+    def __init__(
+        self,
+        base: AccountingBase,
+        period: str,
+        fallback: Fallback | None = None,
+        memory_history: Iterable[AccountingHistoryEntry] | None = None,
+    ):
         if not re.fullmatch(r"\d{4}-\d{2}", period):
             raise ValueError("Periodo deve usar YYYY-MM.")
         self.base = base
@@ -154,12 +160,17 @@ class AccountingEntryEngine:
             if any(account.code.startswith(prefix) for prefix in application_parents)
         }
         self.financial_accounts = self.bank_accounts | self.application_accounts
-        self.history = tuple(
-            row for row in base.history
-            if month_of(row.date) < period
-            and row.debit_account in self.accounts
-            and row.credit_account in self.accounts
+        def usable(row: AccountingHistoryEntry) -> bool:
+            return row.debit_account in self.accounts and row.credit_account in self.accounts
+
+        # Cadastro HIST is a classification catalog: any month may classify the competence.
+        self.catalog = tuple(row for row in base.history if usable(row))
+        # Confirmed competence memory is forward-only (strictly earlier months).
+        self.memory = tuple(
+            row for row in (memory_history or ())
+            if month_of(row.date) < period and usable(row)
         )
+        self.history = self.memory + self.catalog
         self.account_activity = Counter(
             code for row in self.history for code in (row.debit_account, row.credit_account)
         )
@@ -242,29 +253,27 @@ class AccountingEntryEngine:
 
     def _events(self) -> list[CashEvent]:
         events = []
-        if self.base.ledgers:
-            for ledger_index, ledger in enumerate(self.base.ledgers):
-                account, name = self.ledger_accounts[ledger_index]
-                for entry in ledger.entries:
-                    if month_of(entry.date) == self.period and signed(entry):
-                        events.append(CashEvent(
-                            ledger_index=ledger_index,
-                            row_number=entry.origin.row_number,
-                            date=entry.date,
-                            amount=signed(entry),
-                            document=entry.document,
-                            counterparty=entry.counterparty,
-                            notes=entry.notes,
-                            financial_account=account,
-                            financial_name=name,
-                        ))
-            return events
+        for ledger_index, ledger in enumerate(self.base.ledgers):
+            account, name = self.ledger_accounts[ledger_index]
+            for entry in ledger.entries:
+                if month_of(entry.date) == self.period and signed(entry):
+                    events.append(CashEvent(
+                        ledger_index=ledger_index,
+                        row_number=entry.origin.row_number,
+                        date=entry.date,
+                        amount=signed(entry),
+                        document=entry.document,
+                        counterparty=entry.counterparty,
+                        notes=entry.notes,
+                        financial_account=account,
+                        financial_name=name,
+                    ))
         for statement_index, statement in enumerate(self.base.statements):
             account = self._statement_account(statement)
             for transaction in statement.transactions:
                 if month_of(transaction.date) == self.period and transaction.amount:
                     events.append(CashEvent(
-                        ledger_index=statement_index,
+                        ledger_index=len(self.base.ledgers) + statement_index,
                         row_number=None,
                         date=transaction.date,
                         amount=transaction.amount,
@@ -325,16 +334,22 @@ class AccountingEntryEngine:
         sequence = SequenceMatcher(None, " ".join(sorted(left)), " ".join(sorted(right))).ratio()
         return 0.75 * containment + 0.25 * sequence
 
-    def _historical_fallback(self, event: CashEvent, direction: str) -> AccountChoice | None:
-        if not event.financial_account:
+    def _match_history(
+        self,
+        event: CashEvent,
+        direction: str,
+        rows: tuple[AccountingHistoryEntry, ...],
+        reason_prefix: str,
+    ) -> AccountChoice | None:
+        if not event.financial_account or not rows:
             return None
         exact = [
-            row for row in self.history
+            row for row in rows
             if (direction == "inflow" and row.debit_account == event.financial_account)
             or (direction == "outflow" and row.credit_account == event.financial_account)
         ]
         candidates = exact or [
-            row for row in self.history
+            row for row in rows
             if (direction == "inflow" and row.debit_account in self.financial_accounts)
             or (direction == "outflow" and row.credit_account in self.financial_accounts)
         ]
@@ -350,7 +365,12 @@ class AccountingEntryEngine:
             counterpart=counterpart,
             standard_history=best.standard_history,
             confidence="Alta" if score >= 0.70 else "Media",
-            reason=f"historico_textual:{score:.2f}",
+            reason=f"{reason_prefix}:{score:.2f}",
+        )
+
+    def _historical_fallback(self, event: CashEvent, direction: str) -> AccountChoice | None:
+        return self._match_history(event, direction, self.memory, "historico_competencia") or self._match_history(
+            event, direction, self.catalog, "historico_textual"
         )
 
     def _semantic_choice(self, event: CashEvent, direction: str) -> AccountChoice | None:
@@ -439,7 +459,8 @@ class AccountingEntryEngine:
             "audit": {
                 "input_statements": len(self.base.statements),
                 "input_ledgers": len(self.base.ledgers),
-                "input_history_rows": len(self.history),
+                "input_history_rows": len(self.catalog),
+                "input_memory_rows": len(self.memory),
                 "input_accounts": len(self.accounts),
                 "input_mode": "cash_and_statement" if self.base.ledgers and self.base.statements else "cash_only" if self.base.ledgers else "statement_only",
                 "cash_movements": len(events),
@@ -461,9 +482,10 @@ def generate_accounting_entries(
     base: AccountingBase,
     period: str,
     fallback: Fallback | None = None,
+    memory_history: Iterable[AccountingHistoryEntry] | None = None,
 ) -> dict:
-    """Deterministic rules, local history and finally a caller-supplied fallback."""
-    return AccountingEntryEngine(base, period, fallback).generate()
+    """Rules, cadastro catalog, optional forward-only competence memory, then fallback."""
+    return AccountingEntryEngine(base, period, fallback, memory_history).generate()
 
 
 def render_report(result: dict) -> str:
