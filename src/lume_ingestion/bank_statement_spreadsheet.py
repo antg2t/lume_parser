@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -27,6 +27,8 @@ _ITAU_HEADERS = {
     "amount": {"VALOR", "VALORR"},
     "balance": {"SALDO", "SALDOR"},
 }
+_ITAU_REQUIRED = {"date", "description", "amount", "balance"}
+_PRIOR_BALANCE_LOOKBACK_DAYS = 7
 _BRADESCO_HEADERS = {
     "date": {"DATA"},
     "description": {"LANCAMENTO"},
@@ -36,6 +38,8 @@ _BRADESCO_HEADERS = {
     "balance": {"SALDO", "SALDOR"},
 }
 _PERIOD_DATE = re.compile(r"\b\d{2}/\d{2}/\d{4}\b")
+_PERIOD_RANGE = re.compile(r"(\d{2}/\d{2}/\d{4})\s*a\s*(\d{2}/\d{2}/\d{4})", re.I)
+_DAY_MONTH = re.compile(r"^(\d{2})/(\d{2})$")
 _BRADESCO_ACCOUNT = re.compile(r"AG(?:E)?NCIA\D*(\d+)\D*CONTA\D*([\d-]+)", re.I)
 _BRADESCO_ACCOUNT_PRINTED = re.compile(r"AG.NCIA\s*:\s*(\d+).*?CONTA\s*:\s*([\d-]+)", re.I)
 
@@ -48,7 +52,12 @@ def _cells(row: dict[str, Any]) -> dict[int, dict[str, Any]]:
     return {int(cell["column"]): cell for cell in row.get("cells", []) if isinstance(cell, dict) and "column" in cell}
 
 
-def _header(rows: list[dict[str, Any]], fields: dict[str, set[str]]) -> tuple[int, dict[str, int]] | None:
+def _header(
+    rows: list[dict[str, Any]],
+    fields: dict[str, set[str]],
+    required: set[str] | None = None,
+) -> tuple[int, dict[str, int]] | None:
+    needed = required or set(fields)
     for row in rows:
         columns: dict[str, int] = {}
         for cell in row.get("cells", []):
@@ -57,15 +66,19 @@ def _header(rows: list[dict[str, Any]], fields: dict[str, set[str]]) -> tuple[in
             for field, aliases in fields.items():
                 if label in aliases and field not in columns:
                     columns[field] = int(cell["column"])
-        if set(fields) <= set(columns):
+        if needed <= set(columns):
             return int(row["row_number"]), columns
     return None
 
 
-def _sheet_with_header(sheets: list[dict[str, Any]], fields: dict[str, set[str]]) -> tuple[dict[str, Any], int, dict[str, int]] | None:
+def _sheet_with_header(
+    sheets: list[dict[str, Any]],
+    fields: dict[str, set[str]],
+    required: set[str] | None = None,
+) -> tuple[dict[str, Any], int, dict[str, int]] | None:
     for sheet in sheets:
         rows = sheet.get("rows") if isinstance(sheet, dict) else None
-        if isinstance(rows, list) and (found := _header(rows, fields)):
+        if isinstance(rows, list) and (found := _header(rows, fields, required)):
             header_row, columns = found
             return sheet, header_row, columns
     return None
@@ -87,10 +100,43 @@ def recognize_spreadsheet_bank_statement(sheets: list[dict[str, Any]]) -> dict[s
     """Recognize only from a tabular signature and the printed bank name."""
 
     text = fold_text(_all_text(sheets))
-    if _sheet_with_header(sheets, _ITAU_HEADERS) and "ITAU" in text:
+    has_itau_columns = _sheet_with_header(sheets, _ITAU_HEADERS, _ITAU_REQUIRED)
+    has_itau_counterparty = _sheet_with_header(sheets, _ITAU_HEADERS)
+    if has_itau_counterparty and "ITAU" in text:
+        return {"adapter": "itau-spreadsheet-bank-statement-v1", "bank": "Itaú", "layout": "spreadsheet-v1"}
+    if has_itau_columns and "EXTRATODECONTACORRENTE" in text and "AGENCIACONTA" in text:
         return {"adapter": "itau-spreadsheet-bank-statement-v1", "bank": "Itaú", "layout": "spreadsheet-v1"}
     if _sheet_with_header(sheets, _BRADESCO_HEADERS) and "BRADESCO" in text:
         return {"adapter": "bradesco-net-empresa-xls-v1", "bank": "Bradesco", "layout": "net-empresa-v1"}
+    return None
+
+
+def _parse_row_date(value: Any, period_start: date | None, period_end: date | None) -> date | None:
+    parsed = parse_date(value)
+    if parsed:
+        return parsed
+    rendered = clean_text(value)
+    if not rendered:
+        return None
+    match = _DAY_MONTH.fullmatch(rendered)
+    if not match:
+        return None
+    day, month = int(match.group(1)), int(match.group(2))
+    years: list[int] = []
+    for year in (period_end.year if period_end else None, period_start.year if period_start else None, (period_start.year - 1) if period_start else None):
+        if year is not None and year not in years:
+            years.append(year)
+    window_start = period_start - timedelta(days=_PRIOR_BALANCE_LOOKBACK_DAYS) if period_start else None
+    for year in years:
+        try:
+            candidate = date(year, month, day)
+        except ValueError:
+            continue
+        if window_start and period_end:
+            if window_start <= candidate <= period_end:
+                return candidate
+        else:
+            return candidate
     return None
 
 
@@ -129,7 +175,13 @@ def _metadata(rows: list[dict[str, Any]]) -> tuple[str | None, str | None, date 
     dates: list[date] = []
     for row in rows:
         values = [_value(cell) for cell in row.get("cells", [])]
-        row_label = fold_text(" ".join(str(value or "") for value in values))
+        blob = " ".join(str(value or "") for value in values)
+        row_label = fold_text(blob)
+        range_match = _PERIOD_RANGE.search(blob.replace("\xa0", " "))
+        if range_match:
+            for raw in range_match.groups():
+                if (parsed := parse_date(raw)) and parsed not in dates:
+                    dates.append(parsed)
         for index, value in enumerate(values):
             label = fold_text(str(value)) if value is not None else ""
             following = clean_text(values[index + 1]) if index + 1 < len(values) else None
@@ -137,14 +189,28 @@ def _metadata(rows: list[dict[str, Any]]) -> tuple[str | None, str | None, date 
                 branch = following
             elif label == "CONTA" and following:
                 account = following
-        if "PERIODO" in row_label:
-            dates.extend(parsed for raw in _PERIOD_DATE.findall(" ".join(str(value or "") for value in values)) if (parsed := parse_date(raw)))
+            elif label == "AGENCIACONTA" and following:
+                parts = following.replace(" ", "").split("/", 1)
+                if len(parts) == 2:
+                    branch = branch or parts[0]
+                    account = account or parts[1]
+        if "PERIODO" in row_label and not dates:
+            dates.extend(parsed for raw in _PERIOD_DATE.findall(blob) if (parsed := parse_date(raw)))
     return branch, account, dates[0] if dates else None, dates[1] if len(dates) > 1 else None
+
+
+def _is_daily_balance(folded: str) -> bool:
+    return (
+        folded == "SALDO"
+        or folded.startswith("SALDOTOTALDISPONIVELDIA")
+        or folded.startswith("SALDOEMCONTACORRENTE")
+        or folded.startswith("SDOCTA")
+    )
 
 
 def _itau_statement(raw: dict[str, Any], source_format: str) -> tuple[BankStatement, list[Warning]]:
     sheets = raw.get("workbook", {}).get("sheets", [])
-    found = _sheet_with_header(sheets, _ITAU_HEADERS)
+    found = _sheet_with_header(sheets, _ITAU_HEADERS, _ITAU_REQUIRED)
     if not found:
         raise IngestionFailure("unsupported_bank_statement_layout", "O RAW nao corresponde ao layout tabular Itaú suportado.")
     sheet, header_row, columns = found
@@ -157,7 +223,7 @@ def _itau_statement(raw: dict[str, Any], source_format: str) -> tuple[BankStatem
         if int(row["row_number"]) <= header_row:
             continue
         cells = _cells(row)
-        transaction_date = parse_date(_cell_value(cells, columns["date"]))
+        transaction_date = _parse_row_date(_cell_value(cells, columns["date"]), period_start, period_end)
         description = clean_text(_cell_value(cells, columns["description"]))
         if transaction_date is None or not description:
             continue
@@ -167,7 +233,7 @@ def _itau_statement(raw: dict[str, Any], source_format: str) -> tuple[BankStatem
         if "SALDOANTERIOR" in folded:
             initial_balance = initial_balance if initial_balance is not None else balance
             continue
-        if folded.startswith("SALDOTOTALDISPONIVELDIA") or folded.startswith("SALDOEMCONTACORRENTE"):
+        if _is_daily_balance(folded):
             if balance is not None:
                 daily_by_date[transaction_date] = BankStatementDailyBalance(date=transaction_date, balance=balance, origin=origin)
             continue
@@ -177,14 +243,16 @@ def _itau_statement(raw: dict[str, Any], source_format: str) -> tuple[BankStatem
         transactions.append(BankStatementTransaction(
             date=transaction_date,
             description=description,
-            counterparty=clean_text(_cell_value(cells, columns["counterparty"])),
-            counterparty_tax_id=clean_text(_cell_value(cells, columns["tax_id"])),
+            counterparty=clean_text(_cell_value(cells, columns["counterparty"])) if "counterparty" in columns else None,
+            counterparty_tax_id=clean_text(_cell_value(cells, columns["tax_id"])) if "tax_id" in columns else None,
             amount=amount,
             transaction_type="credit" if amount >= 0 else "debit",
             balance=None,
             origin=origin,
         ))
     daily_balances = [daily_by_date[key] for key in sorted(daily_by_date)]
+    if not transactions and initial_balance is None:
+        raise IngestionFailure("unsupported_bank_statement_layout", "O RAW nao corresponde ao layout tabular Itaú suportado.")
     statement = BankStatement(
         bank="Itaú",
         layout="spreadsheet-v1",
