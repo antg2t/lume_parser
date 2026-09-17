@@ -41,7 +41,7 @@ ALIASES: dict[str, set[str]] = {
     "inflow": {"ENTRADA"},
     "outflow": {"SAIDA"},
     "issue_date": {"EMISSAO", "DATAEMISSAO"},
-    "notes": {"ANOTACOES", "ANOTACAO", "OBSERVACAO", "HISTORICO"},
+    "notes": {"ANOTACOES", "ANOTACAO", "OBSERVACAO", "OBSERVACOES"},
 }
 
 BANK_REQUIRED = ({"date", "description", "amount"}, {"date", "description", "credit", "debit"})
@@ -72,7 +72,10 @@ def _store_path() -> Path:
 def _load_json(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
     formats = payload.get("formats") if isinstance(payload, dict) else payload
     return [item for item in formats or [] if isinstance(item, dict) and item.get("id")]
 
@@ -97,7 +100,10 @@ def remember_format(item: dict[str, Any]) -> None:
     ):
         return
     current.append(item)
-    path.write_text(json.dumps({"schema_version": "1.0", "formats": current}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    payload = json.dumps({"schema_version": "1.0", "formats": current}, ensure_ascii=False, indent=2) + "\n"
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    tmp.replace(path)
 
 
 def jaccard(left: set[str], right: set[str]) -> float:
@@ -180,18 +186,14 @@ def header_titles_from_extract(raw: dict[str, Any]) -> list[str]:
 
 
 def _detect_bank(raw: dict[str, Any], filename: str = "") -> str | None:
-    blob = fold_text(" ".join([filename, json.dumps(raw.get("source") or {}, ensure_ascii=False), *header_titles_from_extract(raw)]))
+    parts = [filename, *header_titles_from_extract(raw)]
     pages = raw.get("pages") if isinstance(raw.get("pages"), list) else []
     for page in pages:
         if isinstance(page, dict):
             text = page.get("text") if isinstance(page.get("text"), dict) else {}
-            blob += fold_text(" ".join(str(text.get("layout") or "") + str(text.get("basic") or "")))
-    for sheet in sheets_from_extract(raw):
-        for row in sheet.get("rows") or []:
-            if isinstance(row, dict):
-                blob += fold_text(" ".join(str(_value(cell) or "") for cell in row.get("cells") or []))
-                if len(blob) > 20000:
-                    break
+            parts.append(str(text.get("layout") or ""))
+            parts.append(str(text.get("basic") or ""))
+    blob = fold_text(" ".join(parts))
     for name, aliases in _BANKS:
         if any(fold_text(alias) in blob for alias in aliases):
             return name
@@ -285,10 +287,6 @@ def match_extract(raw: dict[str, Any], filename: str = "") -> FormatMatch | None
                 continue
             if item and score >= REUSE_MIN:
                 adapter, minted = str(item["id"]), False
-            elif item and score >= VERSION_MIN:
-                found = re.search(r"-v(\d+)$", str(item["id"]))
-                base = str(item["id"])[: found.start()] if found else str(item["id"])
-                adapter, minted = f"{base}-v{(int(found.group(1)) + 1) if found else 2}", True
             else:
                 adapter, minted = _next_id(family, bank, formats), True
             current = FormatMatch(
@@ -470,15 +468,7 @@ def extract_bank_statement(raw: dict[str, Any], match: FormatMatch):
     daily_balances = [daily_by_date[key] for key in sorted(daily_by_date)]
     if not transactions and initial_balance is None:
         raise IngestionFailure("spreadsheet_columns_not_mapped", "Os titulos de coluna nao produziram lancamentos.")
-    if match.minted:
-        remember_format({
-            "id": match.adapter,
-            "family": match.family,
-            "bank": match.bank,
-            "source_formats": [source_format],
-            "headers": match.headers,
-            "required": match.required,
-        })
+    _persist_minted(match, source_format)
     statement = BankStatement(
         bank=match.bank or "Desconhecido",
         layout="label-registry-v1",
@@ -492,3 +482,67 @@ def extract_bank_statement(raw: dict[str, Any], match: FormatMatch):
         daily_balances=daily_balances,
     )
     return statement, reconcile_bank_statement(statement)
+
+
+def _persist_minted(match: FormatMatch, source_format: str) -> None:
+    if not match.minted:
+        return
+    remember_format({
+        "id": match.adapter,
+        "family": match.family,
+        "bank": match.bank,
+        "source_formats": [source_format],
+        "headers": match.headers,
+        "required": match.required,
+    })
+
+
+def extract_cash_ledger(raw: dict[str, Any], match: FormatMatch):
+    from lume_ingestion.models import CashLedger, CashLedgerCollection, CashLedgerEntry, CashLedgerOrigin, Warning
+
+    sheets = {str(sheet.get("name") or ""): sheet for sheet in sheets_from_extract(raw)}
+    sheet = sheets.get(match.sheet_name) or next(iter(sheets.values()), None)
+    if sheet is None:
+        raise IngestionFailure("spreadsheet_columns_not_mapped", "Nao ha tabela com titulos de coluna utilizaveis.")
+    rows = sheet.get("rows") or []
+    source_format = str(raw.get("source_format") or "xlsx")
+    origin_format = "pdf" if source_format == "pdf" else "xlsx"
+    columns = match.columns
+    entries: list[CashLedgerEntry] = []
+    for row in rows:
+        if not isinstance(row, dict) or int(row.get("row_number") or 0) <= match.header_row:
+            continue
+        cells = _cells(row)
+        transaction_date = parse_date(_cell_value(cells, columns["date"]) if "date" in columns else None)
+        inflow = parse_money(_cell_value(cells, columns["inflow"])) if "inflow" in columns else None
+        outflow = parse_money(_cell_value(cells, columns["outflow"])) if "outflow" in columns else None
+        balance = parse_money(_cell_value(cells, columns["balance"])) if "balance" in columns else None
+        if transaction_date is None or balance is None or (inflow is None and outflow is None):
+            continue
+        entries.append(CashLedgerEntry(
+            date=transaction_date,
+            issue_date=parse_date(_cell_value(cells, columns["issue_date"])) if "issue_date" in columns else None,
+            document=clean_text(_cell_value(cells, columns["document"])) if "document" in columns else None,
+            counterparty=clean_text(_cell_value(cells, columns["counterparty"])) if "counterparty" in columns else None,
+            notes=clean_text(_cell_value(cells, columns["notes"])) if "notes" in columns else None,
+            inflow=inflow or Decimal("0"),
+            outflow=outflow or Decimal("0"),
+            balance=balance,
+            origin=CashLedgerOrigin(
+                source_format=origin_format,
+                sheet=match.sheet_name,
+                row_number=int(row["row_number"]),
+                cell_refs=[str(cell.get("coordinate") or "") for cell in row.get("cells") or []],
+            ),
+        ))
+    if not entries:
+        raise IngestionFailure("spreadsheet_columns_not_mapped", "Os titulos de coluna nao produziram lancamentos de caixa.")
+    _persist_minted(match, source_format)
+    ledger = CashLedger(
+        initial_balance=entries[0].balance - entries[0].inflow + entries[0].outflow,
+        final_balance=entries[-1].balance,
+        period_start=entries[0].date,
+        period_end=entries[-1].date,
+        entries=entries,
+    )
+    return CashLedgerCollection(ledgers=[ledger]), []

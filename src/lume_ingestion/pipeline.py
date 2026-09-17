@@ -10,7 +10,7 @@ from lume_ingestion import parsers as _registered_parsers  # noqa: F401
 from lume_ingestion.artifacts import OutputDirectory, read_json, write_json
 from lume_ingestion.bank_statement import normalize_bank_statement, reconcile_bank_statement
 from lume_ingestion.bank_statement_spreadsheet import normalize_spreadsheet_bank_statement
-from lume_ingestion.format_registry import FormatMatch, extract_bank_statement
+from lume_ingestion.format_registry import FormatMatch, extract_bank_statement, extract_cash_ledger
 from lume_ingestion.accounting import normalize_accounting_history, normalize_chart_of_accounts
 from lume_ingestion.cash_ledger import (
     normalize_cash_ledger_pdf,
@@ -189,6 +189,22 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "requires_ocr": False,
             "fiscal_document": fiscal_document.model_dump(mode="json"),
             "warnings": raw.get("warnings", []),
+            "errors": raw.get("errors", []),
+            "normalization_duration_ms": round((perf_counter() - started) * 1000),
+        }
+    elif raw.get("source_format") in {"pdf", "xlsx", "xls"} and raw.get("document_type") == "cash_ledger" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") == "format_registry":
+        cash_ledger, parser_warnings = extract_cash_ledger(raw, FormatMatch.from_recognition(raw, raw["document_recognition"]))
+        normalized = {
+            "schema_version": "1.0",
+            "source": raw["source"],
+            "source_format": raw["source_format"],
+            "document_type": "cash_ledger",
+            "parser": raw["parser"],
+            "parser_version": raw["parser_version"],
+            "classification": raw.get("classification"),
+            "requires_ocr": bool(raw.get("requires_ocr")),
+            "cash_ledger": cash_ledger.model_dump(mode="json"),
+            "warnings": [*raw.get("warnings", []), *(warning.model_dump(mode="json") for warning in parser_warnings)],
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }

@@ -72,6 +72,24 @@ def test_pdf_table_labels_match_the_same_registry_as_xlsx() -> None:
     assert "date" in matched.columns and "amount" in matched.columns
 
 
+def test_cash_titles_extract_and_persist_a_new_format(tmp_path: Path, monkeypatch) -> None:
+    store = tmp_path / "learned.json"
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(store))
+    path = _xlsx(
+        tmp_path,
+        ["Data", "Entrada", "Saída", "Saldo", "Centro"],
+        [["2026-01-02", 10, 0, 10, "caixa"], ["2026-01-03", 0, 4, 6, "caixa"]],
+        "caixa.xlsx",
+    )
+    first = run_pipeline(path, tmp_path / "out1")
+    assert first.success, first.errors
+    assert first.document_type == "cash_ledger"
+    assert first.data["ledgers"][0]["entries"][0]["inflow"] == "10.00"
+    assert store.is_file()
+    second = run_pipeline(path, tmp_path / "out2")
+    assert second.success, second.errors
+
+
 def test_unmapped_columns_fail_closed(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
     path = _xlsx(tmp_path, ["foo", "bar"], [["a", "b"]], "lixo.xlsx")

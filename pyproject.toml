@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lume-ingestion"
-version = "0.3.3"
+version = "0.3.4"
 description = "Laboratorio local e deterministico de ingestao de documentos da Lume"
 authors = ["Lume"]
 readme = "README.md"
