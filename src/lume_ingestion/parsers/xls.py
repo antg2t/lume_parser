@@ -10,7 +10,7 @@ from typing import Any
 import xlrd
 from openpyxl.utils import get_column_letter
 
-from lume_ingestion.bank_statement_spreadsheet import recognize_spreadsheet_bank_statement
+from lume_ingestion.format_registry import match_extract
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import SourceFile, Warning
 
@@ -71,15 +71,16 @@ class XlsParser:
                 })
         finally:
             workbook.release_resources()
-        recognition = recognize_spreadsheet_bank_statement(sheets)
-        if recognition is None:
-            raise IngestionFailure("unsupported_xls_layout", "O XLS foi lido, mas o layout do documento nao e suportado.")
+        preview = {"source": source.model_dump(mode="json"), "source_format": "xls", "workbook": {"sheets": sheets}}
+        matched = match_extract(preview, source.name)
+        if matched is None:
+            raise IngestionFailure("spreadsheet_columns_not_mapped", "O XLS foi lido, mas os titulos de coluna nao mapeiam um formato conhecido nem um formato novo.")
         return {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
             "source_format": "xls",
-            "document_type": "bank_statement",
-            "document_recognition": recognition,
+            "document_type": matched.family,
+            "document_recognition": matched.as_recognition(),
             "parser": self.name,
             "parser_version": self.version,
             "extraction_duration_ms": round((perf_counter() - started) * 1000),

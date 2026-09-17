@@ -14,6 +14,7 @@ from pypdf.errors import PdfReadError
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.bank_statement import recognize_bank_statement
 from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
+from lume_ingestion.format_registry import match_extract
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
 from lume_ingestion.parsers.nfse_pdf import is_national_danfse
 from lume_ingestion.parsers.pdf_ai import (
@@ -170,6 +171,11 @@ class PdfTextParser:
             else None
         )
         ai_statement = None
+        if document_type is None:
+            matched = match_extract({"pages": pages, "source_format": "pdf", "source": source.model_dump(mode="json")}, source.name)
+            if matched:
+                recognition = matched.as_recognition()
+                document_type = matched.family
         if document_type is None:
             extracted = extract_bank_statement_with_xai(content)
             if extracted is not None:

@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "formats": [
+    {
+      "id": "itau-spreadsheet-bank-statement-v1",
+      "family": "bank_statement",
+      "bank": "Itaú",
+      "source_formats": ["xlsx", "xls", "pdf"],
+      "headers": ["DATA", "LANCAMENTO", "RAZAOSOCIAL", "CPFCNPJ", "VALOR", "SALDO"],
+      "required": ["date", "description", "amount"]
+    },
+    {
+      "id": "itau-current-account-spreadsheet-v1",
+      "family": "bank_statement",
+      "bank": "Itaú",
+      "source_formats": ["xlsx", "xls", "pdf"],
+      "headers": ["DATA", "LANCAMENTO", "VALORR", "SALDOR"],
+      "required": ["date", "description", "amount"]
+    },
+    {
+      "id": "bradesco-net-empresa-xls-v1",
+      "family": "bank_statement",
+      "bank": "Bradesco",
+      "source_formats": ["xls", "xlsx", "pdf"],
+      "headers": ["DATA", "LANCAMENTO", "DCTO", "CREDITO", "DEBITO", "SALDO"],
+      "required": ["date", "description", "credit", "debit"]
+    },
+    {
+      "id": "cash-ledger-spreadsheet-v1",
+      "family": "cash_ledger",
+      "bank": null,
+      "source_formats": ["xlsx", "xls", "pdf"],
+      "headers": ["DATA", "EMISSAO", "DOCUMENTO", "CLIENTEFORNECEDOR", "ANOTACOES", "ENTRADA", "SAIDA", "SALDO"],
+      "required": ["date", "inflow", "outflow", "balance"]
+    },
+    {
+      "id": "itau-digital-bank-statement-v1",
+      "family": "bank_statement",
+      "bank": "Itaú",
+      "source_formats": ["pdf"],
+      "headers": ["DATA", "LANCAMENTO", "VALOR", "SALDO"],
+      "labels": ["lancamentosdoperiodo", "saldoanterior", "cnpjcpf", "itau"],
+      "required": ["date", "description", "amount"]
+    },
+    {
+      "id": "bradesco-bank-statement-v1",
+      "family": "bank_statement",
+      "bank": "Bradesco",
+      "source_formats": ["pdf"],
+      "headers": ["DATA", "LANCAMENTO", "CREDITO", "DEBITO", "SALDO"],
+      "labels": ["extratomensal", "saldoanterior", "bradesco", "credito", "debito"],
+      "required": ["date", "description", "credit", "debit"]
+    },
+    {
+      "id": "cash-ledger-report-v1",
+      "family": "cash_ledger",
+      "bank": null,
+      "source_formats": ["pdf"],
+      "headers": ["DATA", "ENTRADA", "SAIDA", "SALDO"],
+      "labels": ["controledefechamentodecaixa", "saldoinicial", "entrada"],
+      "required": ["date", "inflow", "outflow", "balance"]
+    }
+  ]
+}

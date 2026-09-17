@@ -24,7 +24,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import SourceFile, Warning
 from lume_ingestion.accounting import recognize_xlsx_document_type
-from lume_ingestion.bank_statement_spreadsheet import recognize_spreadsheet_bank_statement
+from lume_ingestion.format_registry import match_extract
 
 
 _MAIN_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -180,12 +180,20 @@ class XlsxParser:
         cached_book.close()
 
         document_type = recognize_xlsx_document_type(sheets)
-        recognition = None if document_type else recognize_spreadsheet_bank_statement(sheets)
+        recognition = None
+        if not document_type:
+            preview = {"source": source.model_dump(mode="json"), "source_format": "xlsx", "workbook": {"sheets": sheets}}
+            matched = match_extract(preview, source.name)
+            if matched:
+                document_type = matched.family
+                recognition = matched.as_recognition()
+        if not document_type:
+            raise IngestionFailure("spreadsheet_columns_not_mapped", "Nao ha titulos de coluna reconheciveis neste arquivo.")
         raw = {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
             "source_format": "xlsx",
-            "document_type": document_type or ("bank_statement" if recognition else "cash_ledger"),
+            "document_type": document_type,
             "parser": self.name,
             "parser_version": self.version,
             "extraction_duration_ms": round((perf_counter() - started) * 1000),
