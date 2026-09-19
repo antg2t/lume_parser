@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.1",
+  "contract": "motor-contabil-replicavel.v1",
+  "period": "2026-08",
+  "entries": [
+    {
+      "id": "linha-2",
+      "date": "2026-08-01",
+      "debit_account": "1000012",
+      "credit_account": "2000001",
+      "amount": "50",
+      "standard_history": "551",
+      "complement": "RECEBIMENTO PIX - ACME - DOC 123",
+      "financial_name": "Banco Horizonte",
+      "document": "123",
+      "source_rows": [
+        2
+      ],
+      "status": "LANCAR",
+      "confidence": "Alta",
+      "reason": "historico_textual:0.85|hist_contas:2x",
+      "account_probability": 0.8452380952380952,
+      "account_probability_source": "text_similarity",
+      "history_probability": 1.0,
+      "history_probability_source": "account_pair_frequency",
+      "history_cd_candidate": "551",
+      "history_cd_probability": 1.0,
+      "history_cd_support": 2,
+      "history_cd_alternatives": 1
+    }
+  ],
+  "review": [],
+  "audit": {
+    "history_complement_schema": "hist-complement.v1",
+    "client_model_schema": "client-accounting-template.v3",
+    "global_model_schema": "global-account-counterpart.v1",
+    "account_pair_history_schema": "account-pair-to-hist.v1",
+    "prediction_probability_schema": "account-and-hist-probabilities.v1",
+    "input_history_rows_before_period": 2,
+    "account_pair_history_pairs": 1,
+    "generated_entries": 1,
+    "launch": 1,
+    "review_count": 0
+  }
+}

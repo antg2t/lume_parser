@@ -1,0 +1,22 @@
+{
+  "schema_version": "motor-contabil-replicavel.v1",
+  "client_id": "exemplo",
+  "target_period": "2026-08",
+  "client_auto_threshold": 1.0,
+  "accounts": [
+    {"code": "1.1.1.02.000", "reduced_code": "1000000", "description": "Bancos Conta Movimento"},
+    {"code": "1.1.1.02.001", "reduced_code": "1000012", "description": "Banco Horizonte"},
+    {"code": "1.1.1.05.001", "reduced_code": "2000001", "description": "Duplicatas a Receber"}
+  ],
+  "history": [
+    {"date": "2026-07-01", "debit_account": "1000012", "credit_account": "2000001", "amount": "10", "standard_history": "551", "complement": "Recebimento Acme"},
+    {"date": "2026-07-02", "debit_account": "1000012", "credit_account": "2000001", "amount": "20", "standard_history": "551", "complement": "Recebimento Acme"}
+  ],
+  "approved_examples": [
+    {"date": "2026-07-01", "text": "ACME recebimento", "direction": "inflow", "financial_account": "1000012", "counterpart": "2000001", "standard_history": "551", "amount": "10"},
+    {"date": "2026-07-02", "text": "ACME recebimento", "direction": "inflow", "financial_account": "1000012", "counterpart": "2000001", "standard_history": "551", "amount": "20"}
+  ],
+  "movements": [
+    {"id": "linha-2", "date": "2026-08-01", "amount": "50", "counterparty": "ACME", "notes": "PIX RECEBIDO", "document": "123", "financial_account": "1000012", "financial_name": "Banco Horizonte", "source_row": 2}
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "motor-contabil-replicavel.v1",
+  "description": "Contrato tabular autocontido do motor de Conta, C/D -> HIST e Complemento.",
+  "type": "object",
+  "required": ["schema_version", "client_id", "target_period", "accounts", "history", "approved_examples", "movements"],
+  "properties": {
+    "schema_version": {"const": "motor-contabil-replicavel.v1"},
+    "client_id": {"type": "string", "minLength": 1},
+    "target_period": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+    "client_auto_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+    "global_auto_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 1},
+    "accounts": {"type": "array", "items": {"$ref": "#/$defs/account"}},
+    "history": {"type": "array", "items": {"$ref": "#/$defs/history"}},
+    "approved_examples": {"type": "array", "items": {"$ref": "#/$defs/approved_example"}},
+    "movements": {"type": "array", "items": {"$ref": "#/$defs/movement"}},
+    "global_examples": {"type": "array", "items": {"$ref": "#/$defs/global_example"}}
+  },
+  "$defs": {
+    "account": {
+      "type": "object",
+      "required": ["code", "reduced_code", "description"],
+      "properties": {
+        "code": {"type": "string"},
+        "reduced_code": {"type": "string", "minLength": 1},
+        "description": {"type": "string"}
+      }
+    },
+    "history": {
+      "type": "object",
+      "required": ["date", "debit_account", "credit_account", "complement"],
+      "properties": {
+        "date": {"type": "string", "format": "date"},
+        "debit_account": {"type": "string"},
+        "credit_account": {"type": "string"},
+        "amount": {"type": ["string", "number"]},
+        "standard_history": {"type": ["string", "null"]},
+        "complement": {"type": ["string", "null"]}
+      }
+    },
+    "approved_example": {
+      "type": "object",
+      "required": ["date", "text", "direction", "financial_account", "counterpart"],
+      "properties": {
+        "date": {"type": "string", "format": "date"},
+        "text": {"type": "string"},
+        "direction": {"enum": ["inflow", "outflow"]},
+        "financial_account": {"type": "string"},
+        "counterpart": {"type": "string"},
+        "standard_history": {"type": ["string", "null"]},
+        "amount": {"type": ["string", "number", "null"]}
+      }
+    },
+    "movement": {
+      "type": "object",
+      "required": ["id", "date", "amount", "financial_account"],
+      "properties": {
+        "id": {"type": ["string", "integer"]},
+        "date": {"type": "string", "format": "date"},
+        "amount": {"type": ["string", "number"], "description": "Positivo=entrada; negativo=saída."},
+        "counterparty": {"type": ["string", "null"]},
+        "notes": {"type": ["string", "null"]},
+        "document": {"type": ["string", "null"]},
+        "financial_account": {"type": ["string", "null"]},
+        "financial_name": {"type": ["string", "null"]},
+        "source_row": {"type": ["integer", "null"]}
+      }
+    },
+    "global_example": {
+      "type": "object",
+      "required": ["date", "text", "direction", "semantic_key"],
+      "properties": {
+        "date": {"type": "string", "format": "date"},
+        "text": {"type": "string"},
+        "direction": {"enum": ["inflow", "outflow"]},
+        "semantic_key": {"type": "string", "description": "SHA-256 da hierarquia semântica produzida por semantic_catalog no cliente de origem."}
+      }
+    }
+  }
+}
