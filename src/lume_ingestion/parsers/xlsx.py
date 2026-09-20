@@ -24,6 +24,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import SourceFile, Warning
 from lume_ingestion.accounting import recognize_xlsx_document_type
+from lume_ingestion.bank_statement_spreadsheet import recognize_spreadsheet_bank_statement
 from lume_ingestion.format_registry import match_extract
 
 
@@ -181,6 +182,11 @@ class XlsxParser:
 
         document_type = recognize_xlsx_document_type(sheets)
         recognition = None
+        if not document_type:
+            direct_bank = recognize_spreadsheet_bank_statement(sheets)
+            if direct_bank:
+                document_type = "bank_statement"
+                recognition = direct_bank
         if not document_type:
             preview = {"source": source.model_dump(mode="json"), "source_format": "xlsx", "workbook": {"sheets": sheets}}
             matched = match_extract(preview, source.name)

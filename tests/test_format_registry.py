@@ -33,6 +33,41 @@ def test_column_titles_reuse_known_itau_current_account(tmp_path: Path, monkeypa
     assert result.data["transactions"][0]["amount"] == "-20.00"
 
 
+def test_known_bradesco_layout_wins_over_auxiliary_table_in_learned_registry(tmp_path: Path, monkeypatch) -> None:
+    store = tmp_path / "learned.json"
+    store.write_text(
+        '{"schema_version":"1.0","formats":[{"id":"DESCONHECIDO-spreadsheet-bank-statement-v1",'
+        '"family":"bank_statement","bank":"Itaú","headers":["DATA","HISTORICO","VALORR"],'
+        '"required":["amount","date","description"]}]}',
+        encoding="utf-8",
+    )
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Sheet0"
+    sheet.append(["Bradesco Net Empresa"])
+    sheet.append(["Data", "Lançamento", "Dcto.", "Crédito (R$)", "Débito (R$)", "Saldo (R$)"])
+    sheet.append(["02/01/2026", "PIX RECEBIDO", "1", "100,00", "", "100,00"])
+    sheet.append(["03/01/2026", "PAGAMENTO", "2", "", "-25,00", "75,00"])
+    sheet.append(["Total", "", "", "100,00", "-25,00", "75,00"])
+    sheet.append([])
+    sheet.append(["Saldos Invest Fácil / Plus"])
+    sheet.append([])
+    sheet.append(["Data", "Histórico", "Valor (R$)"])
+    sheet.append(["02/01/2026", "SALDO INVEST FÁCIL", "567.313,56"])
+    sheet.append(["03/01/2026", "SALDO INVEST FÁCIL", "443.763,88"])
+    path = tmp_path / "bradesco-com-tabela-auxiliar.xlsx"
+    workbook.save(path)
+
+    result = run_pipeline(path, tmp_path / "out")
+
+    assert result.success, result.errors
+    assert result.data["bank"] == "Bradesco"
+    assert [row["description"] for row in result.data["transactions"]] == ["PIX RECEBIDO", "PAGAMENTO"]
+    assert result.data["transactions"][0]["amount"] == "100.00"
+    assert result.data["transactions"][1]["amount"] == "-25.00"
+    assert result.data["transactions"][0]["origin"]["row_number"] == 3
+
+
 def test_new_header_titles_mint_a_format_and_the_next_file_reuses_it(tmp_path: Path, monkeypatch) -> None:
     store = tmp_path / "learned.json"
     monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(store))

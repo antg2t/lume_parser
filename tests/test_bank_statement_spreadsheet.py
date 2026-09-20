@@ -100,7 +100,7 @@ def test_itau_current_account_xlsx_without_period_does_not_succeed_empty(tmp_pat
     result = run_pipeline(path, tmp_path / "output")
 
     assert not result.success
-    assert result.errors[0].code == "spreadsheet_columns_not_mapped"
+    assert result.errors[0].code == "unsupported_bank_statement_layout"
 
 
 def test_xlsx_without_bank_or_cash_headers_still_fails_as_cash(tmp_path: Path) -> None:
