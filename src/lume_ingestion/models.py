@@ -241,6 +241,7 @@ class CashLedgerEntry(JsonModel):
     issue_date: date | None = None
     document: str | None = None
     counterparty: str | None = None
+    counterparty_tax_id: str | None = None
     notes: str | None = None
     inflow: Decimal
     outflow: Decimal

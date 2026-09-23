@@ -9,6 +9,7 @@ from typing import Any
 
 from lume_ingestion.bank_statement import reconcile_bank_statement
 from lume_ingestion.cash_ledger import clean_text, fold_text, parse_date, parse_money
+from lume_ingestion.identity import extract_tax_id, split_document
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import (
     BankStatement,
@@ -240,11 +241,15 @@ def _itau_statement(raw: dict[str, Any], source_format: str) -> tuple[BankStatem
         amount = parse_money(_cell_value(cells, columns["amount"]))
         if amount is None:
             continue
+        description, document = split_document(description)
+        counterparty = clean_text(_cell_value(cells, columns["counterparty"])) if "counterparty" in columns else None
+        tax_id = clean_text(_cell_value(cells, columns["tax_id"])) if "tax_id" in columns else None
         transactions.append(BankStatementTransaction(
             date=transaction_date,
             description=description,
-            counterparty=clean_text(_cell_value(cells, columns["counterparty"])) if "counterparty" in columns else None,
-            counterparty_tax_id=clean_text(_cell_value(cells, columns["tax_id"])) if "tax_id" in columns else None,
+            counterparty=counterparty,
+            counterparty_tax_id=tax_id or extract_tax_id(tax_id, counterparty),
+            document=document,
             amount=amount,
             transaction_type="credit" if amount >= 0 else "debit",
             balance=None,

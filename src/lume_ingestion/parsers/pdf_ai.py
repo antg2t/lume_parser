@@ -80,6 +80,7 @@ Devolva SOMENTE JSON valido, sem markdown, neste formato:
       "description": string,
       "counterparty": string ou null,
       "counterparty_tax_id": string ou null,
+      "document": string ou null,
       "amount": string decimal COM SINAL (saida negativa, entrada positiva),
       "balance": string decimal ou null,
       "page_number": inteiro
@@ -89,6 +90,8 @@ Devolva SOMENTE JSON valido, sem markdown, neste formato:
 }
 Regras:
 - Nao invente linha. So o que esta impresso.
+- document e o numero do documento/Dcto/NF quando impresso; senao null. Nao copie valor em reais.
+- counterparty e a empresa/remetente/destinatario; counterparty_tax_id e CNPJ/CPF. Nao invente.
 - SALDO ANTERIOR nao e transacao; vai em initial_balance.
 - SALDO TOTAL DISPONIVEL DIA / saldo do dia vai em daily_balances, nao em transactions.
 - Valores no padrao brasileiro (1.234,56) convertidos para "1234.56".
@@ -255,6 +258,7 @@ def statement_from_ai(payload: dict[str, Any]) -> BankStatement:
                 counterparty_tax_id=(str(raw.get("counterparty_tax_id")).strip() or None)
                 if raw.get("counterparty_tax_id")
                 else None,
+                document=(str(raw.get("document")).strip() or None) if raw.get("document") else None,
                 amount=amount,
                 transaction_type="credit" if amount > 0 else "debit",
                 balance=_parse_money(raw.get("balance")),

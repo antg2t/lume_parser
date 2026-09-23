@@ -117,7 +117,7 @@ def test_native_text_pdf_does_not_mark_ocr_applied(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not ITAU_FEB.exists() or not __import__("os").environ.get("XAI_API_KEY"), reason="fixture Itaú ou XAI_API_KEY ausente")
+@pytest.mark.skipif(not ITAU_FEB.exists(), reason="fixture Itaú ausente")
 def test_vanguarda_february_itau_pdfcreator(tmp_path: Path) -> None:
     result = run_pipeline(ITAU_FEB, tmp_path / "output")
     assert result.success, result.errors
@@ -128,11 +128,12 @@ def test_vanguarda_february_itau_pdfcreator(tmp_path: Path) -> None:
 
     raw = read_json(result.outputs.raw_json)
     assert raw["document_recognition"]["adapter"] == "itau-digital-bank-statement-v1"
-    assert any(warning.code == "xai_vision_applied" for warning in result.warnings)
+    assert any(warning.code == "cid_decoded" for warning in result.warnings)
+    assert all(warning.code != "xai_vision_applied" for warning in result.warnings)
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not BRADESCO_FEB.exists() or not __import__("os").environ.get("XAI_API_KEY"), reason="fixture Bradesco ou XAI_API_KEY ausente")
+@pytest.mark.skipif(not BRADESCO_FEB.exists() or not tesseract_available(), reason="fixture Bradesco ou tesseract ausente")
 def test_vanguarda_february_bradesco_pdfcreator(tmp_path: Path) -> None:
     result = run_pipeline(BRADESCO_FEB, tmp_path / "output")
     assert result.success, result.errors
@@ -143,6 +144,7 @@ def test_vanguarda_february_bradesco_pdfcreator(tmp_path: Path) -> None:
 
     raw = read_json(result.outputs.raw_json)
     assert raw["document_recognition"]["adapter"] == "bradesco-bank-statement-v1"
+    assert any(warning.code == "ocr_applied" for warning in result.warnings)
 
 
 @pytest.mark.integration

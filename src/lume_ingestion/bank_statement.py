@@ -15,6 +15,7 @@ from typing import Any
 
 from lume_ingestion.cash_ledger import clean_text, fold_text, parse_date, parse_money
 from lume_ingestion.errors import IngestionFailure
+from lume_ingestion.identity import extract_tax_id, party_from_continuation, split_document
 from lume_ingestion.models import (
     BankStatement,
     BankStatementDailyBalance,
@@ -468,7 +469,8 @@ def normalize_itau_bank_statement(raw: dict[str, Any]) -> tuple[BankStatement, l
         if row.kind != "transaction" or row.amount is None:
             continue
         values, continuation_origins = _row_values(row)
-        if values["description"] is None:
+        description, document = split_document(values["description"])
+        if description is None:
             warnings.append(
                 Warning(
                     code="bank_transaction_description_missing",
@@ -479,10 +481,10 @@ def normalize_itau_bank_statement(raw: dict[str, Any]) -> tuple[BankStatement, l
         transactions.append(
             BankStatementTransaction(
                 date=row.transaction_date,
-                description=values["description"],
+                description=description,
                 counterparty=values["counterparty"],
-                counterparty_tax_id=_tax_id(values["tax_id"]),
-                document=None,
+                counterparty_tax_id=_tax_id(values["tax_id"]) or extract_tax_id(values["tax_id"], values["counterparty"]),
+                document=document,
                 amount=row.amount,
                 transaction_type="credit" if row.amount >= 0 else "debit",
                 balance=row.balance,
@@ -518,6 +520,7 @@ def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatemen
 
     date_prefix = re.compile(r"^(\d{2}/\d{2}/\d{4})(.*)$")
     movement = re.compile(r"(-?\d{1,3}(?:\.\d{3})*,\d{2})\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})$")
+    document_prefix = re.compile(r"(\d{4,12})\s*$")
     period_pattern = re.compile(r"Entre\s+(\d{2}/\d{2}/\d{4})\s+e\s+(\d{2}/\d{2}/\d{4})", re.I)
     account_pattern = re.compile(r"Extrato\s+de:\s*Ag:\s*(\d+)\s*\|\s*CC:\s*([\d-]+)", re.I)
     pending: list[str] = []
@@ -526,6 +529,15 @@ def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatemen
     current_date: date | None = None
     combined = "\n".join(_page_text(page) for page in pages if isinstance(page, dict))
     period_match, account_match = period_pattern.search(combined), account_pattern.search(combined)
+
+    def _attach_bradesco_continuation(transaction: BankStatementTransaction, line: str) -> bool:
+        tax = extract_tax_id(line)
+        party = party_from_continuation(line)
+        if tax:
+            transaction.counterparty_tax_id = transaction.counterparty_tax_id or tax
+        if party:
+            transaction.counterparty = clean_text(" ".join(part for part in (transaction.counterparty, party) if part))
+        return bool(tax or party)
 
     for page in pages:
         page_number = int(page.get("page_number", 1))
@@ -550,7 +562,12 @@ def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatemen
                 amount, balance = parse_money(match.group(1)), parse_money(match.group(2))
                 if amount is None or balance is None:
                     continue
-                description = clean_text(" ".join([*pending, line[: match.start()]]))
+                prefix = line[: match.start()].strip()
+                document = None
+                if doc_match := document_prefix.search(prefix):
+                    document = doc_match.group(1)
+                    prefix = prefix[: doc_match.start()].strip()
+                description = clean_text(" ".join([*pending, prefix]))
                 origin = BankStatementOrigin(
                     page_number=page_number,
                     region={"x0": 0.0, "x1": 596.0, "top": float(line_number), "bottom": float(line_number + 1)},
@@ -559,7 +576,7 @@ def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatemen
                 transactions.append(BankStatementTransaction(
                     date=current_date,
                     description=description,
-                    document=None,
+                    document=document,
                     amount=amount,
                     transaction_type="credit" if amount >= 0 else "debit",
                     balance=balance,
@@ -567,6 +584,8 @@ def normalize_bradesco_bank_statement(raw: dict[str, Any]) -> tuple[BankStatemen
                 ))
                 pending.clear()
             elif not any(marker in fold_text(line) for marker in ("EXTRATOMENSAL", "NOMEDOUSUARIO", "SALDOSINVEST")):
+                if transactions and _attach_bradesco_continuation(transactions[-1], line):
+                    continue
                 pending.append(line)
 
     # ponytail: this layout repeats the last movement at the next page; a boundary-only suffix match is enough here.

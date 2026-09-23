@@ -16,11 +16,66 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-_CID_TOKEN = re.compile(r"\(cid:\d+\)", re.IGNORECASE)
+_CID_TOKEN = re.compile(r"\(cid:(\d+)\)", re.IGNORECASE)
 _DEFAULT_DPI = 300
 _OCR_PSM = 6
 _OCR_LANG = "por"
 _LINE_SNAP = 5.0
+
+# Itaú PDFCreator Identity-H (no ToUnicode). Derived from Vanguarda print-captures
+# of the digital statement: A=21..Z=46, a=47 with j/k/x/y unused, digits 0-9 = 6-15.
+_CID_MAP: dict[int, str] = {
+    1: " ",
+    2: ".",
+    3: ":",
+    4: ",",
+    5: " ",
+    16: "$",
+    17: "-",
+    18: "(",
+    19: ")",
+    20: "/",
+}
+_CID_MAP.update({6 + digit: str(digit) for digit in range(10)})
+_CID_MAP.update({21 + index: character for index, character in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ")})
+_CID_MAP.update(
+    {
+        47: "a",
+        48: "b",
+        49: "c",
+        50: "d",
+        51: "e",
+        52: "f",
+        53: "g",
+        54: "h",
+        55: "i",
+        56: "l",
+        57: "m",
+        58: "n",
+        59: "o",
+        60: "p",
+        61: "q",
+        62: "r",
+        63: "s",
+        64: "t",
+        65: "u",
+        66: "v",
+        67: "w",
+        68: "z",
+        71: "ç",
+        72: "á",
+        73: "é",
+        74: "í",
+        75: "ó",
+        76: "ú",
+        77: "í",
+        78: "ó",
+        80: "ã",
+        83: "ê",
+        84: "ã",
+        85: "õ",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +83,76 @@ class RecoveredPage:
     words: list[dict[str, Any]]
     layout_text: str
     method: str
+
+
+def decode_cid_text(text: str | None) -> str:
+    """Turn ``(cid:N)`` runs into Unicode. Unknown CIDs stay replacement chars."""
+
+    if not text:
+        return ""
+
+    def _replace(match: re.Match[str]) -> str:
+        return _CID_MAP.get(int(match.group(1)), "\ufffd")
+
+    return _CID_TOKEN.sub(_replace, text)
+
+
+def _split_decoded_word(word: dict[str, Any], decoded: str) -> list[dict[str, Any]]:
+    text = decoded.replace("\u00a0", " ")
+    parts = [part for part in re.split(r"\s+", text) if part]
+    if len(parts) <= 1:
+        return [{**word, "text": text.strip() or decoded}]
+    total = max(len(text), 1)
+    try:
+        x0 = float(word["x0"])
+        x1 = float(word["x1"])
+    except (KeyError, TypeError, ValueError):
+        return [{**word, "text": text.strip()}]
+    width = max(x1 - x0, 1.0)
+    cursor = 0
+    expanded: list[dict[str, Any]] = []
+    for part in parts:
+        start = text.find(part, cursor)
+        if start < 0:
+            start = cursor
+        end = start + len(part)
+        expanded.append(
+            {
+                **word,
+                "text": part,
+                "x0": x0 + width * start / total,
+                "x1": x0 + width * end / total,
+            }
+        )
+        cursor = end
+    return expanded
+
+
+def decode_cid_page(page: dict[str, Any]) -> dict[str, Any]:
+    """Replace CID tokens on a plumber page so existing adapters can read it."""
+
+    if not isinstance(page, dict):
+        return page
+    text_obj = page.get("text")
+    if isinstance(text_obj, dict):
+        basic = decode_cid_text(str(text_obj.get("basic") or ""))
+        layout = decode_cid_text(str(text_obj.get("layout") or ""))
+        page["text"] = {**text_obj, "basic": basic, "layout": layout}
+    elif isinstance(text_obj, str) and _CID_TOKEN.search(text_obj):
+        page["text"] = decode_cid_text(text_obj)
+    words = page.get("words")
+    if isinstance(words, list):
+        expanded: list[dict[str, Any]] = []
+        for word in words:
+            if not isinstance(word, dict):
+                continue
+            raw = str(word.get("text") or "")
+            if _CID_TOKEN.search(raw):
+                expanded.extend(_split_decoded_word(word, decode_cid_text(raw)))
+            else:
+                expanded.append(word)
+        page["words"] = expanded
+    return page
 
 
 def cid_marked_text(text: str) -> str:
@@ -237,3 +362,46 @@ def recover_page(
     if not layout.strip():
         return None
     return RecoveredPage(words=words, layout_text=layout, method="ocr")
+
+
+def apply_recovered_page(page: dict[str, Any], recovered: RecoveredPage) -> dict[str, Any]:
+    text_obj = page.get("text") if isinstance(page.get("text"), dict) else {}
+    page["text"] = {**text_obj, "basic": recovered.layout_text, "layout": recovered.layout_text}
+    page["words"] = recovered.words
+    page["recovery"] = recovered.method
+    return page
+
+
+def recover_unusable_pages(
+    content: bytes,
+    pages: list[dict[str, Any]],
+    *,
+    widths: list[float],
+    heights: list[float],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """CID-decode every page, then OCR pages that still have no usable text."""
+
+    methods: list[str] = []
+    for index, page in enumerate(pages):
+        if not isinstance(page, dict):
+            continue
+        before = " ".join(_page_text_parts(page))
+        decode_cid_page(page)
+        after = " ".join(_page_text_parts(page))
+        if _CID_TOKEN.search(before) and not _CID_TOKEN.search(after) and after.strip():
+            page["recovery"] = "cid"
+            methods.append("cid")
+        if not page_needs_recovery(page):
+            continue
+        recovered = recover_page(
+            content,
+            index,
+            page_width=widths[index] if index < len(widths) else 595.0,
+            page_height=heights[index] if index < len(heights) else 842.0,
+        )
+        if recovered is None:
+            methods.append("ocr_unavailable" if not tesseract_available() else "ocr_failed")
+            continue
+        apply_recovered_page(page, recovered)
+        methods.append("ocr")
+    return pages, methods

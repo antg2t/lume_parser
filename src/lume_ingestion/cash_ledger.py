@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 from lume_ingestion.errors import IngestionFailure
+from lume_ingestion.identity import extract_tax_id, strip_tax_id
 from lume_ingestion.models import CashLedger, CashLedgerCollection, CashLedgerEntry, CashLedgerOrigin, Error, Warning
 
 
@@ -133,12 +134,20 @@ def _entry_from_xlsx_row(
     if balance is None or (inflow is None and outflow is None):
         return None
     involved_columns = sorted(set(columns.values()))
+    document = clean_text(_cell_value(cells, columns["document"]))
+    counterparty = clean_text(_cell_value(cells, columns["counterparty"]))
+    notes = clean_text(_cell_value(cells, columns["notes"]))
+    tax_id = extract_tax_id(notes, counterparty)
+    if tax_id:
+        notes = strip_tax_id(notes, tax_id)
+        counterparty = strip_tax_id(counterparty, tax_id)
     return CashLedgerEntry(
         date=transaction_date,
         issue_date=parse_date(_cell_value(cells, columns["issue_date"])),
-        document=clean_text(_cell_value(cells, columns["document"])),
-        counterparty=clean_text(_cell_value(cells, columns["counterparty"])),
-        notes=clean_text(_cell_value(cells, columns["notes"])),
+        document=document,
+        counterparty=counterparty,
+        counterparty_tax_id=tax_id,
+        notes=notes,
         inflow=inflow or Decimal("0"),
         outflow=outflow or Decimal("0"),
         balance=balance,
@@ -324,6 +333,11 @@ def _append_pdf_continuation(entry: CashLedgerEntry, values: dict[str, str | Non
         if continuation:
             previous = getattr(entry, field)
             setattr(entry, field, clean_text(f"{previous or ''} {continuation}"))
+    tax_id = extract_tax_id(entry.notes, entry.counterparty)
+    if tax_id:
+        entry.counterparty_tax_id = entry.counterparty_tax_id or tax_id
+        entry.notes = strip_tax_id(entry.notes, tax_id)
+        entry.counterparty = strip_tax_id(entry.counterparty, tax_id)
     if entry.origin.region:
         entry.origin.region["bottom"] = max(
             entry.origin.region["bottom"],
@@ -357,12 +371,19 @@ def _entries_from_pdf_page(page: dict[str, Any]) -> list[CashLedgerEntry]:
             top = min(float(word["top"]) for word in line)
             bottom = max(float(word.get("bottom", word["top"])) for word in line)
             excerpt = clean_text(" ".join(str(word["text"]) for word in line))
+            notes = values["notes"]
+            counterparty = values["counterparty"]
+            tax_id = extract_tax_id(notes, counterparty)
+            if tax_id:
+                notes = strip_tax_id(notes, tax_id)
+                counterparty = strip_tax_id(counterparty, tax_id)
             current = CashLedgerEntry(
                 date=transaction_date,
                 issue_date=parse_date(values["issue_date"]),
                 document=values["document"],
-                counterparty=values["counterparty"],
-                notes=values["notes"],
+                counterparty=counterparty,
+                counterparty_tax_id=tax_id,
+                notes=notes,
                 inflow=inflow or Decimal("0"),
                 outflow=outflow or Decimal("0"),
                 balance=balance,

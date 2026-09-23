@@ -22,7 +22,7 @@ from lume_ingestion.parsers.pdf_ai import (
     vision_recognition,
     vision_warning,
 )
-from lume_ingestion.parsers.pdf_recover import valid_character_ratio
+from lume_ingestion.parsers.pdf_recover import recover_unusable_pages, valid_character_ratio
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ def _classification(metrics: list[PageMetrics]) -> tuple[str, bool]:
 
 class PdfTextParser:
     name = "pdf-text"
-    version = "0.3.1"
+    version = "0.3.5"
 
     def extract(
         self,
@@ -106,7 +106,8 @@ class PdfTextParser:
             raise IngestionFailure("pdf_text_extraction_failed", "Falha ao extrair o texto basico do PDF.", reason=str(exc)) from exc
 
         pages: list[dict[str, Any]] = []
-        metrics: list[PageMetrics] = []
+        widths: list[float] = []
+        heights: list[float] = []
         try:
             with pdfplumber.open(io.BytesIO(content)) as document:
                 if len(document.pages) != page_count:
@@ -123,23 +124,8 @@ class PdfTextParser:
                     words = _json_safe(page.extract_words(keep_blank_chars=False))
                     tables = _json_safe(page.extract_tables())
                     images = _json_safe(page.images)
-                    metric_text = basic_text or layout_text
-                    ratio = _valid_character_ratio(metric_text)
-                    word_count = len(re.findall(r"\S+", metric_text))
-                    has_useful_text = (
-                        len(metric_text) >= limits.minimum_useful_characters
-                        and ratio >= limits.minimum_valid_ratio
-                    )
-                    metric = PageMetrics(
-                        page_number=index + 1,
-                        characters=len(metric_text),
-                        words=word_count,
-                        valid_character_ratio=ratio,
-                        image_count=len(images),
-                        has_images=bool(images),
-                        has_useful_text=has_useful_text,
-                    )
-                    metrics.append(metric)
+                    widths.append(float(page.width or 595.0))
+                    heights.append(float(page.height or 842.0))
                     pages.append(
                         {
                             "page_number": index + 1,
@@ -147,13 +133,62 @@ class PdfTextParser:
                             "words": words,
                             "tables": tables,
                             "images": images,
-                            "metrics": metric.model_dump(mode="json"),
                         }
                     )
         except IngestionFailure:
             raise
         except Exception as exc:
             raise IngestionFailure("pdf_layout_extraction_failed", "Falha ao extrair o layout do PDF.", reason=str(exc)) from exc
+
+        pages, recovery_methods = recover_unusable_pages(content, pages, widths=widths, heights=heights)
+        if "cid" in recovery_methods:
+            warnings.append(
+                Warning(
+                    code="cid_decoded",
+                    message="Texto CID sem ToUnicode foi decodificado para os adapters existentes.",
+                )
+            )
+        if "ocr" in recovery_methods:
+            warnings.append(
+                Warning(
+                    code="ocr_applied",
+                    message="Paginas sem texto util foram recuperadas por OCR para os adapters existentes.",
+                )
+            )
+        elif "ocr_unavailable" in recovery_methods or "ocr_failed" in recovery_methods:
+            warnings.append(
+                Warning(
+                    code="ocr_unavailable" if "ocr_unavailable" in recovery_methods else "ocr_recommended",
+                    message="Paginas sem texto util precisariam de OCR, mas a recuperacao nao esteve disponivel.",
+                )
+            )
+
+        metrics: list[PageMetrics] = []
+        for index, page in enumerate(pages):
+            text_obj = page.get("text") if isinstance(page.get("text"), dict) else {}
+            words = page.get("words") if isinstance(page.get("words"), list) else []
+            word_text = " ".join(str(word.get("text") or "") for word in words if isinstance(word, dict))
+            layout_text = str(text_obj.get("layout") or "")
+            basic_text = str(text_obj.get("basic") or "")
+            candidates = [layout_text, word_text, basic_text]
+            metric_text = max(candidates, key=_valid_character_ratio) if any(candidates) else ""
+            ratio = _valid_character_ratio(metric_text)
+            word_count = len(re.findall(r"\S+", metric_text))
+            images = page.get("images") if isinstance(page.get("images"), list) else []
+            metric = PageMetrics(
+                page_number=index + 1,
+                characters=len(metric_text),
+                words=word_count,
+                valid_character_ratio=ratio,
+                image_count=len(images),
+                has_images=bool(images),
+                has_useful_text=(
+                    len(metric_text) >= limits.minimum_useful_characters
+                    and ratio >= limits.minimum_valid_ratio
+                ),
+            )
+            metrics.append(metric)
+            page["metrics"] = metric.model_dump(mode="json")
 
         classification, requires_ocr = _classification(metrics)
         metadata = {str(key).lstrip("/"): _json_safe(value) for key, value in (reader.metadata or {}).items()}
@@ -185,11 +220,11 @@ class PdfTextParser:
                 document_type = "bank_statement"
                 requires_ocr = False
                 warnings.append(vision_warning())
-        elif requires_ocr:
+        elif requires_ocr and "ocr" not in recovery_methods:
             warnings.append(
                 Warning(
                     code="ocr_recommended",
-                    message="Uma ou mais paginas nao possuem texto util; OCR nao e usado nesta release.",
+                    message="Uma ou mais paginas ainda nao possuem texto util apos a recuperacao.",
                 )
             )
         return {
