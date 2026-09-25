@@ -184,3 +184,69 @@ def test_confirmed_cash_layout_does_not_require_balance(tmp_path: Path, monkeypa
     assert result.document_type == "cash_ledger"
     assert result.data["ledgers"][0]["entries"][0]["inflow"] == "120.00"
     assert result.data["ledgers"][0]["entries"][1]["outflow"] == "20.00"
+
+
+def _bradesco_two_grades(tmp_path: Path, *, lancamento: str, name: str) -> Path:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["", "Bradesco Net Empresa"])
+    sheet.append([])
+    sheet.append(["Data", lancamento, "Dcto.", "Crédito (R$)", "Débito (R$)", "Saldo (R$)"])
+    sheet.append(["02/02/2026", "TED SYNGENTA", "7655006", "349593.07", "", "349594.07"])
+    sheet.append(["02/02/2026", "PAGTO ALUGUEL", "8901", "", "-11042.85", "275476.22"])
+    sheet.append(["Total", "", "", "300146.88", "-37701.55", "267804.93"])
+    sheet.append([])
+    sheet.append(["Saldos Invest Fácil / Plus"])
+    sheet.append(["Data", "Histórico", "Valor (R$)"])
+    sheet.append(["02/02/2026", "SALDO INVEST FÁCIL", "256115.72"])
+    sheet.append(["13/02/2026", "SALDO INVEST FÁCIL", "483796.13"])
+    path = tmp_path / name
+    workbook.save(path)
+    return path
+
+
+def test_first_grade_unknown_titles_pause_instead_of_reading_the_invest_block(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _bradesco_two_grades(tmp_path, lancamento="Lançamentoss", name="layout-alterado.xlsx")
+
+    result = run_pipeline(path, tmp_path / "out")
+
+    assert not result.success
+    assert result.errors[0].code == "spreadsheet_columns_not_mapped"
+    proposal = result.errors[0].details["layout"]
+    assert "Lançamentoss" in proposal["headers"]
+    assert proposal["headers"] != ["Data", "Histórico", "Valor (R$)"]
+    assert proposal["samples"]["2"][0] == "TED SYNGENTA"
+
+
+def test_first_grade_known_titles_read_the_extract_and_skip_invest_balance(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _bradesco_two_grades(tmp_path, lancamento="Lançamento", name="extrato.xlsx")
+
+    result = run_pipeline(path, tmp_path / "out")
+
+    assert result.success, result.errors
+    descriptions = [item["description"] for item in result.data["transactions"]]
+    assert "TED SYNGENTA" in descriptions
+    assert "PAGTO ALUGUEL" in descriptions
+    assert all("SALDO INVEST" not in (text or "") for text in descriptions)
+
+
+def test_confirmed_map_on_the_first_grade_reads_every_extract_row(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _bradesco_two_grades(tmp_path, lancamento="Lançamentoss", name="layout-map.xlsx")
+
+    result = run_pipeline(
+        path,
+        tmp_path / "out",
+        layout_map={
+            "family": "bank",
+            "headerRow": 3,
+            "sheet": "Sheet",
+            "columns": {"date": 1, "description": 2, "credit": 4, "debit": 5},
+        },
+    )
+
+    assert result.success, result.errors
+    descriptions = [item["description"] for item in result.data["transactions"]]
+    assert descriptions == ["TED SYNGENTA", "PAGTO ALUGUEL"]

@@ -147,6 +147,25 @@ def _family_for(columns: dict[str, int]) -> str | None:
     return None
 
 
+def _first_table_header(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], list[str], dict[str, int]] | None:
+    """Lock the first movement table. Prefer a row already in the catalog; never a later grade."""
+    fallback: tuple[dict[str, Any], dict[str, Any], list[str], dict[str, int]] | None = None
+    for sheet in sheets_from_extract(raw):
+        rows = sheet.get("rows") if isinstance(sheet.get("rows"), list) else []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if len(_rendered_cells(row)) < 2:
+                continue
+            titles, columns = _map_headers(row.get("cells") or [])
+            candidate = (sheet, row, titles, columns)
+            if fallback is None:
+                fallback = candidate
+            if len(columns) >= 2:
+                return candidate
+    return fallback
+
+
 def _tables_as_sheets(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     sheets: list[dict[str, Any]] = []
     for page in pages:
@@ -252,56 +271,51 @@ def _suggest_field(title: str, values: list[str]) -> tuple[str | None, float]:
 
 def layout_proposal_from_extract(raw: dict[str, Any]) -> dict[str, Any]:
     """Return privacy-safe column evidence even when no family can be closed."""
+    locked = _first_table_header(raw)
     best: dict[str, Any] | None = None
-    best_score = -1
-    for sheet in sheets_from_extract(raw):
-        rows = [row for row in sheet.get("rows") or [] if isinstance(row, dict)]
-        for index, row in enumerate(rows):
-            headers = _rendered_cells(row)
-            if len(headers) < 2:
+    if locked is not None:
+        sheet, row, _titles, _columns = locked
+        rows = [item for item in sheet.get("rows") or [] if isinstance(item, dict)]
+        index = next((i for i, item in enumerate(rows) if item is row), 0)
+        headers = _rendered_cells(row)
+        samples: dict[str, list[str]] = {}
+        for column in headers:
+            values: list[str] = []
+            for sample_row in rows[index + 1:index + 21]:
+                value = _rendered_cells(sample_row).get(column)
+                if value:
+                    values.append(value[:160])
+                if len(values) >= 5:
+                    break
+            samples[str(column)] = values
+        suggestions: dict[str, str] = {}
+        confidence: dict[str, float] = {}
+        claimed: set[str] = set()
+        ranked = []
+        for column, title in headers.items():
+            field_name, score = _suggest_field(title, samples[str(column)])
+            if field_name:
+                ranked.append((score, column, field_name))
+        for score, column, field_name in sorted(ranked, reverse=True):
+            if field_name in claimed:
                 continue
-            samples: dict[str, list[str]] = {}
-            for column in headers:
-                values: list[str] = []
-                for sample_row in rows[index + 1:index + 21]:
-                    value = _rendered_cells(sample_row).get(column)
-                    if value:
-                        values.append(value[:160])
-                    if len(values) >= 5:
-                        break
-                samples[str(column)] = values
-            suggestions: dict[str, str] = {}
-            confidence: dict[str, float] = {}
-            claimed: set[str] = set()
-            ranked = []
-            for column, title in headers.items():
-                field_name, score = _suggest_field(title, samples[str(column)])
-                if field_name:
-                    ranked.append((score, column, field_name))
-            for score, column, field_name in sorted(ranked, reverse=True):
-                if field_name in claimed:
-                    continue
-                claimed.add(field_name)
-                suggestions[str(column)] = field_name
-                confidence[str(column)] = round(score, 2)
-            mapped = set(suggestions.values())
-            family = "cash" if {"date", "inflow", "outflow"} <= mapped else "bank" if {"date", "description", "amount"} <= mapped else None
-            score = len(suggestions) * 10 + sum(bool(values) for values in samples.values())
-            candidate = {
-                "sheet": str(sheet.get("name") or ""),
-                "headerRow": int(row.get("row_number") or 0),
-                "headers": [headers[column] for column in sorted(headers)],
-                "columns": [column for column in sorted(headers)],
-                "samples": samples,
-                "suggestions": suggestions,
-                "confidence": confidence,
-                "family": family,
-            }
-            if score > best_score:
-                best = candidate
-                best_score = score
+            claimed.add(field_name)
+            suggestions[str(column)] = field_name
+            confidence[str(column)] = round(score, 2)
+        mapped = set(suggestions.values())
+        family = "cash" if {"date", "inflow", "outflow"} <= mapped else "bank" if {"date", "description", "amount"} <= mapped else None
+        best = {
+            "sheet": str(sheet.get("name") or ""),
+            "headerRow": int(row.get("row_number") or 0),
+            "headers": [headers[column] for column in sorted(headers)],
+            "columns": [column for column in sorted(headers)],
+            "samples": samples,
+            "suggestions": suggestions,
+            "confidence": confidence,
+            "family": family,
+        }
     if best is None:
-        best = {"sheet": "", "headerRow": 0, "headers": [], "columns": [], "samples": {}, "suggestions": {}, "confidence": {}, "family": None, "_score": 0}
+        best = {"sheet": "", "headerRow": 0, "headers": [], "columns": [], "samples": {}, "suggestions": {}, "confidence": {}, "family": None}
     folded = [fold_text(title) for title in best["headers"]]
     best["fingerprint"] = hashlib.sha256(json.dumps(folded, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
     return best
@@ -424,53 +438,51 @@ class FormatMatch:
 
 
 def match_extract(raw: dict[str, Any], filename: str = "") -> FormatMatch | None:
-    """Map header titles of any tabular extract onto a stored or minted format."""
-    best: FormatMatch | None = None
+    """Map the first table's titles onto a stored format. Later grades are not candidates."""
+    locked = _first_table_header(raw)
+    if locked is None:
+        return None
+    sheet, row, titles, columns = locked
+    family = _family_for(columns)
+    if not family or not titles:
+        return None
     formats = load_formats()
     bank = _detect_bank(raw, filename)
-    for sheet in sheets_from_extract(raw):
-        rows = sheet.get("rows") if isinstance(sheet.get("rows"), list) else []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            titles, columns = _map_headers(row.get("cells") or [])
-            family = _family_for(columns)
-            if not family or not titles:
-                continue
-            incoming = set(titles)
-            ranked: list[tuple[float, dict[str, Any]]] = []
-            for item in formats:
-                if item.get("family") != family:
-                    continue
-                known = {fold_text(h) for h in item.get("headers") or [] if fold_text(h)}
-                ranked.append((jaccard(incoming, known), item))
-            ranked.sort(key=lambda pair: pair[0], reverse=True)
-            score, item = ranked[0] if ranked else (0.0, None)
-            if family == "cash_ledger":
-                required = list(item.get("required") or CASH_REQUIRED) if item else list(CASH_REQUIRED)
-            else:
-                required = list(item.get("required") or next(req for req in BANK_REQUIRED if req <= set(columns))) if item else list(next(req for req in BANK_REQUIRED if req <= set(columns)))
-            if not set(required) <= set(columns):
-                continue
-            if item and score >= REUSE_MIN:
-                adapter, minted = str(item["id"]), False
-            else:
-                adapter, minted = _next_id(family, bank, formats), True
-            current = FormatMatch(
-                adapter=adapter,
-                family=family,
-                bank=bank or (str(item.get("bank")) if item and item.get("bank") else None),
-                similarity=score if item else 1.0,
-                minted=minted,
-                headers=titles,
-                columns=columns,
-                header_row=int(row.get("row_number") or 0),
-                sheet_name=str(sheet.get("name") or ""),
-                required=required,
-            )
-            if best is None or (current.similarity, len(current.columns)) > (best.similarity, len(best.columns)):
-                best = current
-    return best
+    incoming = set(titles)
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for item in formats:
+        if item.get("family") != family:
+            continue
+        known = {fold_text(h) for h in item.get("headers") or [] if fold_text(h)}
+        ranked.append((jaccard(incoming, known), item))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    score, item = ranked[0] if ranked else (0.0, None)
+    reuse = bool(item and score >= REUSE_MIN)
+    if family == "cash_ledger":
+        required = list((item.get("required") if reuse and item else None) or CASH_REQUIRED)
+    else:
+        required = list(
+            (item.get("required") if reuse and item else None)
+            or next(req for req in BANK_REQUIRED if req <= set(columns))
+        )
+    if not set(required) <= set(columns):
+        return None
+    if reuse and item:
+        adapter, minted = str(item["id"]), False
+    else:
+        adapter, minted = _next_id(family, bank, formats), True
+    return FormatMatch(
+        adapter=adapter,
+        family=family,
+        bank=bank or (str(item.get("bank")) if item and item.get("bank") else None),
+        similarity=score if item else 1.0,
+        minted=minted,
+        headers=titles,
+        columns=columns,
+        header_row=int(row.get("row_number") or 0),
+        sheet_name=str(sheet.get("name") or ""),
+        required=required,
+    )
 
 
 def catalog_layouts() -> list[dict[str, Any]]:
