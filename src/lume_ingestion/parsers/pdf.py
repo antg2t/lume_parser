@@ -14,7 +14,7 @@ from pypdf.errors import PdfReadError
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.bank_statement import recognize_bank_statement
 from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
-from lume_ingestion.format_registry import match_extract
+from lume_ingestion.format_registry import layout_proposal_from_extract, match_extract
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
 from lume_ingestion.parsers.nfse_pdf import is_national_danfse
 from lume_ingestion.parsers.pdf_ai import (
@@ -227,7 +227,7 @@ class PdfTextParser:
                     message="Uma ou mais paginas ainda nao possuem texto util apos a recuperacao.",
                 )
             )
-        return {
+        raw = {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
             "source_format": "pdf",
@@ -244,3 +244,8 @@ class PdfTextParser:
             "warnings": [warning.model_dump(mode="json") for warning in warnings],
             "errors": [],
         }
+        if document_type is None and any(page.get("tables") for page in pages):
+            proposal = layout_proposal_from_extract(raw)
+            if len(proposal.get("headers") or []) >= 2:
+                raw["layout_proposal"] = proposal
+        return raw

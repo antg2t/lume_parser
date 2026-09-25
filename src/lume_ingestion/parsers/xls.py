@@ -10,7 +10,7 @@ from typing import Any
 import xlrd
 from openpyxl.utils import get_column_letter
 
-from lume_ingestion.format_registry import match_extract
+from lume_ingestion.format_registry import layout_proposal_from_extract, match_extract
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import SourceFile, Warning
 
@@ -73,14 +73,11 @@ class XlsParser:
             workbook.release_resources()
         preview = {"source": source.model_dump(mode="json"), "source_format": "xls", "workbook": {"sheets": sheets}}
         matched = match_extract(preview, source.name)
-        if matched is None:
-            raise IngestionFailure("spreadsheet_columns_not_mapped", "O XLS foi lido, mas os titulos de coluna nao mapeiam um formato conhecido nem um formato novo.")
-        return {
+        raw = {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
             "source_format": "xls",
-            "document_type": matched.family,
-            "document_recognition": matched.as_recognition(),
+            "document_type": matched.family if matched else None,
             "parser": self.name,
             "parser_version": self.version,
             "extraction_duration_ms": round((perf_counter() - started) * 1000),
@@ -88,3 +85,8 @@ class XlsParser:
             "warnings": [warning.model_dump(mode="json") for warning in warnings],
             "errors": [],
         }
+        if matched:
+            raw["document_recognition"] = matched.as_recognition()
+        else:
+            raw["layout_proposal"] = layout_proposal_from_extract(raw)
+        return raw

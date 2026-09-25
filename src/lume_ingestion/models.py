@@ -227,7 +227,7 @@ class FiscalDocument(JsonModel):
 class CashLedgerOrigin(JsonModel):
     """Localizacao verificavel de um lancamento no documento de origem."""
 
-    source_format: Literal["xlsx", "pdf"]
+    source_format: Literal["xlsx", "xls", "csv", "pdf"]
     sheet: str | None = None
     row_number: int | None = Field(default=None, ge=1)
     cell_refs: list[str] = Field(default_factory=list)
@@ -312,7 +312,7 @@ class AccountingHistory(JsonModel):
 class BankStatementOrigin(JsonModel):
     """Evidencia espacial de uma linha impressa no extrato bancario."""
 
-    source_format: Literal["pdf", "xlsx", "xls"] = "pdf"
+    source_format: Literal["pdf", "xlsx", "xls", "csv"] = "pdf"
     page_number: int | None = Field(default=None, ge=1)
     sheet: str | None = None
     row_number: int | None = Field(default=None, ge=1)

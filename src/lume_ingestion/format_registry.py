@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import hashlib
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -46,6 +47,14 @@ ALIASES: dict[str, set[str]] = {
 
 BANK_REQUIRED = ({"date", "description", "amount"}, {"date", "description", "credit", "debit"})
 CASH_REQUIRED = {"date", "inflow", "outflow", "balance"}
+LAYOUT_FIELDS = frozenset(ALIASES)
+_ABBREVIATIONS = {
+    "DT": "date", "DTMOV": "date", "DTMOVIMENTO": "date",
+    "DESC": "description", "DESCR": "description", "TEXTO": "description",
+    "VL": "amount", "VLR": "amount", "MONTANTE": "amount",
+    "RECEBIDO": "inflow", "RECEBIMENTOS": "inflow",
+    "PAGO": "outflow", "PAGAMENTOS": "outflow",
+}
 
 
 def fold_text(value: str) -> str:
@@ -183,6 +192,164 @@ def header_titles_from_extract(raw: dict[str, Any]) -> list[str]:
             if len(columns) > best_fields:
                 best, best_fields = titles, len(columns)
     return best
+
+
+def _rendered_cells(row: dict[str, Any]) -> dict[int, str]:
+    rendered: dict[int, str] = {}
+    for cell in row.get("cells") or []:
+        if not isinstance(cell, dict) or "column" not in cell:
+            continue
+        value = clean_text(_value(cell))
+        if value:
+            rendered[int(cell["column"])] = value
+    return rendered
+
+
+def _looks_like_date(value: str) -> bool:
+    return parse_date(value) is not None or bool(re.fullmatch(r"\d{2}/\d{2}", value))
+
+
+def _looks_like_tax_id(value: str) -> bool:
+    digits = re.sub(r"\D", "", value)
+    return len(digits) in {11, 14}
+
+
+def _sample_kind(values: list[str]) -> str:
+    if not values:
+        return "unknown"
+    date_hits = sum(_looks_like_date(value) for value in values)
+    money_hits = sum(parse_money(value) is not None for value in values)
+    tax_hits = sum(_looks_like_tax_id(value) for value in values)
+    threshold = max(1, (len(values) + 1) // 2)
+    if date_hits >= threshold:
+        return "date"
+    if tax_hits >= threshold:
+        return "tax_id"
+    if money_hits >= threshold:
+        return "money"
+    return "text"
+
+
+def _suggest_field(title: str, values: list[str]) -> tuple[str | None, float]:
+    folded = fold_text(title)
+    for field, aliases in ALIASES.items():
+        if folded in aliases:
+            return field, 1.0
+    if folded in _ABBREVIATIONS:
+        return _ABBREVIATIONS[folded], 0.72
+    for field, aliases in ALIASES.items():
+        if any(len(folded) >= 4 and (folded.startswith(alias[:4]) or alias.startswith(folded[:4])) for alias in aliases):
+            return field, 0.62
+    kind = _sample_kind(values)
+    if kind == "date":
+        return "date", 0.45
+    if kind == "tax_id":
+        return "tax_id", 0.45
+    if kind == "money":
+        return "amount", 0.40
+    return None, 0.0
+
+
+def layout_proposal_from_extract(raw: dict[str, Any]) -> dict[str, Any]:
+    """Return privacy-safe column evidence even when no family can be closed."""
+    best: dict[str, Any] | None = None
+    best_score = -1
+    for sheet in sheets_from_extract(raw):
+        rows = [row for row in sheet.get("rows") or [] if isinstance(row, dict)]
+        for index, row in enumerate(rows):
+            headers = _rendered_cells(row)
+            if len(headers) < 2:
+                continue
+            samples: dict[str, list[str]] = {}
+            for column in headers:
+                values: list[str] = []
+                for sample_row in rows[index + 1:index + 21]:
+                    value = _rendered_cells(sample_row).get(column)
+                    if value:
+                        values.append(value[:160])
+                    if len(values) >= 5:
+                        break
+                samples[str(column)] = values
+            suggestions: dict[str, str] = {}
+            confidence: dict[str, float] = {}
+            claimed: set[str] = set()
+            ranked = []
+            for column, title in headers.items():
+                field_name, score = _suggest_field(title, samples[str(column)])
+                if field_name:
+                    ranked.append((score, column, field_name))
+            for score, column, field_name in sorted(ranked, reverse=True):
+                if field_name in claimed:
+                    continue
+                claimed.add(field_name)
+                suggestions[str(column)] = field_name
+                confidence[str(column)] = round(score, 2)
+            mapped = set(suggestions.values())
+            family = "cash" if {"date", "inflow", "outflow"} <= mapped else "bank" if {"date", "description", "amount"} <= mapped else None
+            score = len(suggestions) * 10 + sum(bool(values) for values in samples.values())
+            candidate = {
+                "sheet": str(sheet.get("name") or ""),
+                "headerRow": int(row.get("row_number") or 0),
+                "headers": [headers[column] for column in sorted(headers)],
+                "columns": [column for column in sorted(headers)],
+                "samples": samples,
+                "suggestions": suggestions,
+                "confidence": confidence,
+                "family": family,
+            }
+            if score > best_score:
+                best = candidate
+                best_score = score
+    if best is None:
+        best = {"sheet": "", "headerRow": 0, "headers": [], "columns": [], "samples": {}, "suggestions": {}, "confidence": {}, "family": None, "_score": 0}
+    folded = [fold_text(title) for title in best["headers"]]
+    best["fingerprint"] = hashlib.sha256(json.dumps(folded, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
+    return best
+
+
+def match_from_layout_map(raw: dict[str, Any], layout_map: dict[str, Any]) -> FormatMatch:
+    family_id = str(layout_map.get("family") or "")
+    family = {"bank": "bank_statement", "cash": "cash_ledger"}.get(family_id)
+    columns_raw = layout_map.get("columns")
+    if family is None or not isinstance(columns_raw, dict):
+        raise IngestionFailure("layout_map_invalid", "O mapa de colunas nao possui familia e colunas validas.")
+    try:
+        columns = {str(field): int(column) for field, column in columns_raw.items()}
+    except (TypeError, ValueError) as exc:
+        raise IngestionFailure("layout_map_invalid", "O mapa de colunas possui indice invalido.") from exc
+    if not columns or not set(columns) <= LAYOUT_FIELDS or len(set(columns.values())) != len(columns):
+        raise IngestionFailure("layout_map_invalid", "O mapa de colunas possui campo repetido ou desconhecido.")
+    mapped = set(columns)
+    valid = (
+        ({"date", "description", "amount"} <= mapped or {"date", "description", "credit", "debit"} <= mapped)
+        if family == "bank_statement"
+        else ("date" in mapped and bool({"inflow", "outflow"} & mapped))
+    )
+    if not valid:
+        raise IngestionFailure("layout_map_invalid", "O mapa nao fecha os campos obrigatorios desta familia.")
+    proposal = layout_proposal_from_extract(raw)
+    sheet_name = str(layout_map.get("sheet") or proposal["sheet"])
+    header_row = int(layout_map.get("headerRow") or proposal["headerRow"])
+    sheets = {str(sheet.get("name") or ""): sheet for sheet in sheets_from_extract(raw)}
+    sheet = sheets.get(sheet_name)
+    header = next((row for row in (sheet or {}).get("rows", []) if int(row.get("row_number") or 0) == header_row), None)
+    available = set(_rendered_cells(header or {}))
+    if sheet is None or not set(columns.values()) <= available:
+        raise IngestionFailure("layout_map_invalid", "O mapa aponta para coluna ausente no arquivo.")
+    titles = [value for _, value in sorted(_rendered_cells(header).items())]
+    return FormatMatch(
+        adapter=f"confirmed-{proposal['fingerprint'][:16]}",
+        family=family,
+        bank=None,
+        similarity=1.0,
+        minted=False,
+        headers=titles,
+        columns=columns,
+        header_row=header_row,
+        sheet_name=sheet_name,
+        required=list(columns),
+        extractor="layout_map",
+    )
 
 
 def _detect_bank(raw: dict[str, Any], filename: str = "") -> str | None:
@@ -485,16 +652,9 @@ def extract_bank_statement(raw: dict[str, Any], match: FormatMatch):
 
 
 def _persist_minted(match: FormatMatch, source_format: str) -> None:
-    if not match.minted:
-        return
-    remember_format({
-        "id": match.adapter,
-        "family": match.family,
-        "bank": match.bank,
-        "source_formats": [source_format],
-        "headers": match.headers,
-        "required": match.required,
-    })
+    # Runtime learning belongs to the SQL recipe catalog.  The parser keeps
+    # bundled seeds read-only and must never mint a host-global JSON recipe.
+    del match, source_format
 
 
 def extract_cash_ledger(raw: dict[str, Any], match: FormatMatch):
@@ -506,9 +666,10 @@ def extract_cash_ledger(raw: dict[str, Any], match: FormatMatch):
         raise IngestionFailure("spreadsheet_columns_not_mapped", "Nao ha tabela com titulos de coluna utilizaveis.")
     rows = sheet.get("rows") or []
     source_format = str(raw.get("source_format") or "xlsx")
-    origin_format = "pdf" if source_format == "pdf" else "xlsx"
+    origin_format = source_format
     columns = match.columns
     entries: list[CashLedgerEntry] = []
+    running_balance = Decimal("0")
     for row in rows:
         if not isinstance(row, dict) or int(row.get("row_number") or 0) <= match.header_row:
             continue
@@ -517,17 +678,18 @@ def extract_cash_ledger(raw: dict[str, Any], match: FormatMatch):
         inflow = parse_money(_cell_value(cells, columns["inflow"])) if "inflow" in columns else None
         outflow = parse_money(_cell_value(cells, columns["outflow"])) if "outflow" in columns else None
         balance = parse_money(_cell_value(cells, columns["balance"])) if "balance" in columns else None
-        if transaction_date is None or balance is None or (inflow is None and outflow is None):
+        if transaction_date is None or (inflow is None and outflow is None):
             continue
+        running_balance = balance if balance is not None else running_balance + (inflow or Decimal("0")) - (outflow or Decimal("0"))
         entries.append(CashLedgerEntry(
             date=transaction_date,
             issue_date=parse_date(_cell_value(cells, columns["issue_date"])) if "issue_date" in columns else None,
             document=clean_text(_cell_value(cells, columns["document"])) if "document" in columns else None,
             counterparty=clean_text(_cell_value(cells, columns["counterparty"])) if "counterparty" in columns else None,
-            notes=clean_text(_cell_value(cells, columns["notes"])) if "notes" in columns else None,
+            notes=clean_text(_cell_value(cells, columns.get("notes", columns.get("description", 0)))) if "notes" in columns or "description" in columns else None,
             inflow=inflow or Decimal("0"),
             outflow=outflow or Decimal("0"),
-            balance=balance,
+            balance=running_balance,
             origin=CashLedgerOrigin(
                 source_format=origin_format,
                 sheet=match.sheet_name,

@@ -40,6 +40,27 @@ class FileTypeDetector:
 
         return prefix.startswith(cls._XLS_SIGNATURE)
 
+    @staticmethod
+    def _is_csv(prefix: bytes) -> bool:
+        """Recognize a small, regular delimited text table by content."""
+        text = None
+        for encoding in ("utf-8-sig", "utf-8", "cp1252"):
+            try:
+                text = prefix.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if not text or "\x00" in text:
+            return False
+        lines = [line for line in text.splitlines() if line.strip()][:8]
+        if len(lines) < 2:
+            return False
+        for delimiter in (";", "\t", ","):
+            counts = [line.count(delimiter) for line in lines]
+            if counts[0] >= 1 and len({count for count in counts if count > 0}) == 1 and all(count > 0 for count in counts[:2]):
+                return True
+        return False
+
     def inspect(self, path: str | Path, max_size: int = DEFAULT_MAX_FILE_SIZE) -> Detection:
         file_path = require_regular_file(path, max_size=max_size)
         try:
@@ -58,6 +79,8 @@ class FileTypeDetector:
                 detected = "xlsx"
             elif self._is_xls(prefix):
                 detected = "xls"
+            elif self._is_csv(prefix):
+                detected = "csv"
             else:
                 detected = None
         warnings: list[Warning] = []
@@ -65,6 +88,7 @@ class FileTypeDetector:
         extension_says_xml = file_path.suffix.lower() == ".xml"
         extension_says_xlsx = file_path.suffix.lower() == ".xlsx"
         extension_says_xls = file_path.suffix.lower() == ".xls"
+        extension_says_csv = file_path.suffix.lower() == ".csv"
         if extension_says_pdf and detected != "pdf":
             warnings.append(
                 Warning(
@@ -125,12 +149,28 @@ class FileTypeDetector:
                     details={"extension": file_path.suffix.lower()},
                 )
             )
+        elif extension_says_csv and detected != "csv":
+            warnings.append(
+                Warning(
+                    code="extension_content_mismatch",
+                    message="A extensao indica CSV, mas o conteudo nao forma uma tabela delimitada.",
+                )
+            )
+        elif detected == "csv" and not extension_says_csv:
+            warnings.append(
+                Warning(
+                    code="extension_content_mismatch",
+                    message="O conteudo e uma tabela CSV, embora a extensao seja diferente.",
+                    details={"extension": file_path.suffix.lower()},
+                )
+            )
         source = source_file(file_path)
         media_types = {
             "pdf": "application/pdf",
             "xml": "application/xml",
             "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "xls": "application/vnd.ms-excel",
+            "csv": "text/csv",
         }
         source.media_type = media_types.get(detected)
         return Detection(source=source, format=detected, warnings=warnings)

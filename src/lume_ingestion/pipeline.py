@@ -10,7 +10,7 @@ from lume_ingestion import parsers as _registered_parsers  # noqa: F401
 from lume_ingestion.artifacts import OutputDirectory, read_json, write_json
 from lume_ingestion.bank_statement import normalize_bank_statement, reconcile_bank_statement
 from lume_ingestion.bank_statement_spreadsheet import normalize_spreadsheet_bank_statement
-from lume_ingestion.format_registry import FormatMatch, extract_bank_statement, extract_cash_ledger
+from lume_ingestion.format_registry import FormatMatch, extract_bank_statement, extract_cash_ledger, match_from_layout_map
 from lume_ingestion.accounting import normalize_accounting_history, normalize_chart_of_accounts
 from lume_ingestion.cash_ledger import (
     normalize_cash_ledger_pdf,
@@ -47,6 +47,7 @@ def extract(
     output_root: str | Path = "output",
     max_size: int = DEFAULT_MAX_FILE_SIZE,
     max_pages: int = 500,
+    layout_map: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], OutputDirectory]:
     detection = inspect(path, max_size=max_size)
     parser = registry.get(detection.format)
@@ -57,6 +58,13 @@ def extract(
         list(detection.warnings),
         PdfLimits(max_pages=max_pages),
     )
+    if layout_map is not None:
+        if detection.format not in {"pdf", "xlsx", "xls", "csv"}:
+            raise IngestionFailure("layout_map_invalid", "Mapa de colunas so pode ser aplicado a arquivo tabular.")
+        matched = match_from_layout_map(raw, layout_map)
+        raw["document_type"] = matched.family
+        raw["document_recognition"] = matched.as_recognition()
+        raw.pop("layout_proposal", None)
     write_json(destination.path / "raw.json", raw)
     if isinstance(raw.get("pages"), list):
         destination.write_page_texts(raw["pages"])
@@ -86,7 +94,7 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
-    elif raw.get("source_format") in {"pdf", "xlsx", "xls"} and raw.get("document_type") == "bank_statement" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") == "format_registry":
+    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") == "bank_statement" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") in {"format_registry", "layout_map"}:
         bank_statement, parser_warnings = extract_bank_statement(raw, FormatMatch.from_recognition(raw, raw["document_recognition"]))
         normalized = {
             "schema_version": "1.0",
@@ -118,7 +126,7 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
-    elif raw.get("source_format") in {"xlsx", "xls"} and raw.get("document_type") == "bank_statement":
+    elif raw.get("source_format") in {"xlsx", "xls", "csv"} and raw.get("document_type") == "bank_statement":
         bank_statement, parser_warnings = normalize_spreadsheet_bank_statement(raw)
         normalized = {
             "schema_version": "1.0",
@@ -192,7 +200,7 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
-    elif raw.get("source_format") in {"pdf", "xlsx", "xls"} and raw.get("document_type") == "cash_ledger" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") == "format_registry":
+    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") == "cash_ledger" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") in {"format_registry", "layout_map"}:
         cash_ledger, parser_warnings = extract_cash_ledger(raw, FormatMatch.from_recognition(raw, raw["document_recognition"]))
         normalized = {
             "schema_version": "1.0",
@@ -240,6 +248,12 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "accounting_history": history.model_dump(mode="json"), "warnings": raw.get("warnings", []), "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
+    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") is None and raw.get("layout_proposal"):
+        raise IngestionFailure(
+            "spreadsheet_columns_not_mapped",
+            "Os titulos foram lidos, mas ainda precisam ser associados.",
+            layout=raw.get("layout_proposal") or {},
+        )
     else:
         raise IngestionFailure(
             "unsupported_raw_format",
@@ -275,7 +289,7 @@ def validate(normalized_path: str | Path, output_path: str | Path | None = None)
                 "A saida fiscal normalizada e invalida.",
                 reason=str(exc),
             ) from exc
-    elif source_format in {"xlsx", "pdf"} and normalized.get("document_type") == "cash_ledger":
+    elif source_format in {"xlsx", "xls", "csv", "pdf"} and normalized.get("document_type") == "cash_ledger":
         try:
             cash_ledger = CashLedgerCollection.model_validate(normalized.get("cash_ledger"))
         except ValidationError as exc:
@@ -286,7 +300,7 @@ def validate(normalized_path: str | Path, output_path: str | Path | None = None)
             ) from exc
         errors.extend(validate_cash_ledger_collection(cash_ledger))
         cash_ledger_data = cash_ledger.model_dump(mode="json")
-    elif source_format in {"pdf", "xlsx", "xls"} and normalized.get("document_type") == "bank_statement":
+    elif source_format in {"pdf", "xlsx", "xls", "csv"} and normalized.get("document_type") == "bank_statement":
         try:
             bank_statement = BankStatement.model_validate(normalized.get("bank_statement"))
         except ValidationError as exc:
@@ -423,12 +437,13 @@ def run_pipeline(
     output_root: str | Path = "output",
     max_size: int = DEFAULT_MAX_FILE_SIZE,
     max_pages: int = 500,
+    layout_map: dict[str, Any] | None = None,
 ) -> IngestionResult:
     started = perf_counter()
     detection: Detection | None = None
     try:
         detection = inspect(path, max_size=max_size)
-        raw, destination = extract(path, output_root, max_size=max_size, max_pages=max_pages)
+        raw, destination = extract(path, output_root, max_size=max_size, max_pages=max_pages, layout_map=layout_map)
         normalized = normalize(destination.path / "raw.json")
         result = validate(destination.path / "normalized.json")
         result.extraction_duration_ms = int(raw.get("extraction_duration_ms", 0))

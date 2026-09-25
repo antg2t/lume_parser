@@ -24,7 +24,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.models import SourceFile, Warning
 from lume_ingestion.accounting import recognize_xlsx_document_type
-from lume_ingestion.format_registry import match_extract
+from lume_ingestion.format_registry import layout_proposal_from_extract, match_extract
 
 
 _MAIN_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -187,8 +187,6 @@ class XlsxParser:
             if matched:
                 document_type = matched.family
                 recognition = matched.as_recognition()
-        if not document_type:
-            raise IngestionFailure("spreadsheet_columns_not_mapped", "Nao ha titulos de coluna reconheciveis neste arquivo.")
         raw = {
             "schema_version": "1.0",
             "source": source.model_dump(mode="json"),
@@ -203,4 +201,6 @@ class XlsxParser:
         }
         if recognition:
             raw["document_recognition"] = recognition
+        elif not document_type:
+            raw["layout_proposal"] = layout_proposal_from_extract(raw)
         return raw
