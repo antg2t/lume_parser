@@ -15,6 +15,7 @@ from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.bank_statement import recognize_bank_statement
 from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
 from lume_ingestion.format_registry import layout_proposal_from_extract, match_extract
+from lume_ingestion.layouts.entry import apply_entry
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
 from lume_ingestion.parsers.nfse_pdf import is_national_danfse
 from lume_ingestion.parsers.pdf_ai import (
@@ -248,4 +249,5 @@ class PdfTextParser:
             proposal = layout_proposal_from_extract(raw)
             if len(proposal.get("headers") or []) >= 2:
                 raw["layout_proposal"] = proposal
+        apply_entry(raw)
         return raw

@@ -11,6 +11,8 @@ from lume_ingestion.artifacts import OutputDirectory, read_json, write_json
 from lume_ingestion.bank_statement import normalize_bank_statement, reconcile_bank_statement
 from lume_ingestion.bank_statement_spreadsheet import normalize_spreadsheet_bank_statement
 from lume_ingestion.format_registry import FormatMatch, extract_bank_statement, extract_cash_ledger, match_from_layout_map
+from lume_ingestion.layouts.cash_ledger_report import default_guess as cash_pdf_guess
+from lume_ingestion.layouts.entry import apply_entry, finish_proposal, pause_message
 from lume_ingestion.accounting import normalize_accounting_history, normalize_chart_of_accounts
 from lume_ingestion.cash_ledger import (
     normalize_cash_ledger_pdf,
@@ -74,6 +76,7 @@ def extract(
 def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> dict[str, Any]:
     started = perf_counter()
     raw = read_json(raw_path)
+    apply_entry(raw)
     required = ("source", "source_format", "parser", "parser_version")
     missing = [field for field in required if field not in raw]
     if missing:
@@ -142,8 +145,31 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
+    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") == "cash_ledger" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") in {"format_registry", "layout_map"}:
+        cash_ledger, parser_warnings = extract_cash_ledger(raw, FormatMatch.from_recognition(raw, raw["document_recognition"]))
+        normalized = {
+            "schema_version": "1.0",
+            "source": raw["source"],
+            "source_format": raw["source_format"],
+            "document_type": "cash_ledger",
+            "parser": raw["parser"],
+            "parser_version": raw["parser_version"],
+            "classification": raw.get("classification"),
+            "requires_ocr": bool(raw.get("requires_ocr")),
+            "cash_ledger": cash_ledger.model_dump(mode="json"),
+            "warnings": [*raw.get("warnings", []), *(warning.model_dump(mode="json") for warning in parser_warnings)],
+            "errors": raw.get("errors", []),
+            "normalization_duration_ms": round((perf_counter() - started) * 1000),
+        }
     elif raw.get("source_format") == "pdf" and raw.get("document_type") == "cash_ledger":
         cash_ledger, parser_warnings = normalize_cash_ledger_pdf(raw)
+        if validate_cash_ledger_collection(cash_ledger):
+            proposal = finish_proposal(cash_pdf_guess(raw))
+            raise IngestionFailure(
+                "spreadsheet_columns_not_mapped",
+                "O saldo nao fecha com as colunas sugeridas; confirme o mapa antes de gravar.",
+                layout=proposal,
+            )
         normalized = {
             "schema_version": "1.0",
             "source": raw["source"],
@@ -158,6 +184,13 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
+    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") is None and raw.get("layout_proposal"):
+        proposal = raw.get("layout_proposal") or {}
+        raise IngestionFailure(
+            "spreadsheet_columns_not_mapped",
+            pause_message(proposal) if isinstance(proposal, dict) else "Os titulos foram lidos, mas ainda precisam ser associados.",
+            layout=proposal,
+        )
     elif raw.get("source_format") == "pdf":
         if not isinstance(raw.get("pages"), list):
             raise IngestionFailure("invalid_raw", "O RAW de PDF nao possui paginas.")
@@ -200,22 +233,6 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
-    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") == "cash_ledger" and isinstance(raw.get("document_recognition"), dict) and raw["document_recognition"].get("extractor") in {"format_registry", "layout_map"}:
-        cash_ledger, parser_warnings = extract_cash_ledger(raw, FormatMatch.from_recognition(raw, raw["document_recognition"]))
-        normalized = {
-            "schema_version": "1.0",
-            "source": raw["source"],
-            "source_format": raw["source_format"],
-            "document_type": "cash_ledger",
-            "parser": raw["parser"],
-            "parser_version": raw["parser_version"],
-            "classification": raw.get("classification"),
-            "requires_ocr": bool(raw.get("requires_ocr")),
-            "cash_ledger": cash_ledger.model_dump(mode="json"),
-            "warnings": [*raw.get("warnings", []), *(warning.model_dump(mode="json") for warning in parser_warnings)],
-            "errors": raw.get("errors", []),
-            "normalization_duration_ms": round((perf_counter() - started) * 1000),
-        }
     elif raw.get("source_format") == "xlsx" and raw.get("document_type") == "cash_ledger":
         cash_ledger, parser_warnings = normalize_cash_ledger_xlsx(raw)
         normalized = {
@@ -248,12 +265,6 @@ def normalize(raw_path: str | Path, output_path: str | Path | None = None) -> di
             "accounting_history": history.model_dump(mode="json"), "warnings": raw.get("warnings", []), "errors": raw.get("errors", []),
             "normalization_duration_ms": round((perf_counter() - started) * 1000),
         }
-    elif raw.get("source_format") in {"pdf", "xlsx", "xls", "csv"} and raw.get("document_type") is None and raw.get("layout_proposal"):
-        raise IngestionFailure(
-            "spreadsheet_columns_not_mapped",
-            "Os titulos foram lidos, mas ainda precisam ser associados.",
-            layout=raw.get("layout_proposal") or {},
-        )
     else:
         raise IngestionFailure(
             "unsupported_raw_format",
