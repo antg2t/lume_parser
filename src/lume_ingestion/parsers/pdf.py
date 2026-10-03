@@ -13,7 +13,7 @@ from pypdf.errors import PdfReadError
 
 from lume_ingestion.errors import IngestionFailure
 from lume_ingestion.bank_statement import recognize_bank_statement
-from lume_ingestion.cash_ledger import recognize_cash_ledger_pdf
+from lume_ingestion.cash_ledger import apply_cash_glyph_gaps, recognize_cash_ledger_pdf
 from lume_ingestion.format_registry import layout_proposal_from_extract, match_extract
 from lume_ingestion.layouts.entry import apply_entry
 from lume_ingestion.models import PageMetrics, SourceFile, Warning
@@ -109,6 +109,7 @@ class PdfTextParser:
         pages: list[dict[str, Any]] = []
         widths: list[float] = []
         heights: list[float] = []
+        glyphs: list[list[dict[str, Any]]] = []
         try:
             with pdfplumber.open(io.BytesIO(content)) as document:
                 if len(document.pages) != page_count:
@@ -127,6 +128,18 @@ class PdfTextParser:
                     images = _json_safe(page.images)
                     widths.append(float(page.width or 595.0))
                     heights.append(float(page.height or 842.0))
+                    glyphs.append([
+                        {
+                            "text": char.get("text"),
+                            "x0": char.get("x0"),
+                            "x1": char.get("x1"),
+                            "top": char.get("top"),
+                            "bottom": char.get("bottom"),
+                            "doctop": char.get("doctop"),
+                        }
+                        for char in page.chars
+                        if isinstance(char, dict)
+                    ])
                     pages.append(
                         {
                             "page_number": index + 1,
@@ -142,6 +155,7 @@ class PdfTextParser:
             raise IngestionFailure("pdf_layout_extraction_failed", "Falha ao extrair o layout do PDF.", reason=str(exc)) from exc
 
         pages, recovery_methods = recover_unusable_pages(content, pages, widths=widths, heights=heights)
+        apply_cash_glyph_gaps(pages, glyphs)
         if "cid" in recovery_methods:
             warnings.append(
                 Warning(

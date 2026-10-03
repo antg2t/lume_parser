@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import statistics
 import unicodedata
 from collections.abc import Iterable
 from datetime import date, datetime
@@ -15,6 +16,12 @@ from lume_ingestion.models import CashLedger, CashLedgerCollection, CashLedgerEn
 
 
 _MONEY_CENTS = Decimal("0.01")
+# Letter gaps on the cash report are about 0. Word gaps are about 2.6.
+# The default reader cuts at 3, so the name arrives glued. A gap starts a
+# new word only when it clears this floor and the line's own letter gaps.
+# Bank statements do not use this cut.
+_WORD_GAP_FLOOR = 2.0
+_LINE_TOP_TOLERANCE = 2.0
 _HEADER_FIELDS = {
     "date": {"DATA", "DATAMOVIMENTO"},
     "issue_date": {"EMISSAO", "DATAEMISSAO"},
@@ -255,6 +262,98 @@ def normalize_cash_ledger_xlsx(raw: dict[str, Any]) -> tuple[CashLedgerCollectio
     if not ledgers:
         raise IngestionFailure("cash_ledger_without_transactions", "O controle de caixa nao possui linhas transacionais utilizaveis.")
     return CashLedgerCollection(ledgers=ledgers), warnings
+
+
+def _word_gap_threshold(gaps: list[float]) -> float:
+    usable = sorted(gap for gap in gaps if gap >= 0)
+    if not usable:
+        return _WORD_GAP_FLOOR
+    half = usable[: max(1, (len(usable) + 1) // 2)]
+    baseline = float(statistics.median(half))
+    return max(_WORD_GAP_FLOOR, baseline + _WORD_GAP_FLOOR)
+
+
+def _glyph(char: dict[str, Any]) -> dict[str, float | str] | None:
+    text = str(char.get("text") or "")
+    if text == "":
+        return None
+    try:
+        x0 = float(char["x0"])
+        x1 = float(char["x1"])
+        top = float(char["top"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    try:
+        bottom = float(char["bottom"]) if char.get("bottom") is not None else top
+    except (TypeError, ValueError):
+        bottom = top
+    try:
+        doctop = float(char["doctop"]) if char.get("doctop") is not None else top
+    except (TypeError, ValueError):
+        doctop = top
+    return {"text": text, "x0": x0, "x1": x1, "top": top, "bottom": bottom, "doctop": doctop}
+
+
+def _word_from_glyphs(glyphs: list[dict[str, float | str]]) -> dict[str, Any] | None:
+    text = clean_text("".join(str(glyph["text"]) for glyph in glyphs))
+    if not text:
+        return None
+    x0 = min(float(glyph["x0"]) for glyph in glyphs)
+    x1 = max(float(glyph["x1"]) for glyph in glyphs)
+    top = min(float(glyph["top"]) for glyph in glyphs)
+    bottom = max(float(glyph["bottom"]) for glyph in glyphs)
+    return {
+        "text": text,
+        "x0": x0,
+        "x1": x1,
+        "top": top,
+        "bottom": bottom,
+        "doctop": min(float(glyph["doctop"]) for glyph in glyphs),
+        "upright": True,
+        "width": x1 - x0,
+        "height": max(0.0, bottom - top),
+    }
+
+
+def _words_from_glyph_line(line: list[dict[str, float | str]]) -> list[dict[str, Any]]:
+    ordered = sorted(line, key=lambda glyph: float(glyph["x0"]))
+    gaps = [float(right["x0"]) - float(left["x1"]) for left, right in zip(ordered, ordered[1:])]
+    threshold = _word_gap_threshold(gaps)
+    groups: list[list[dict[str, float | str]]] = [[ordered[0]]]
+    for glyph, gap in zip(ordered[1:], gaps):
+        if gap >= threshold:
+            groups.append([glyph])
+        else:
+            groups[-1].append(glyph)
+    return [word for group in groups if (word := _word_from_glyphs(group))]
+
+
+def split_words_on_letter_gap(chars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rebuild words from glyphs. A gap clearly wider than the letters starts a new word."""
+
+    glyphs = [glyph for char in chars if isinstance(char, dict) and (glyph := _glyph(char))]
+    glyphs.sort(key=lambda glyph: (float(glyph["top"]), float(glyph["x0"])))
+    lines: list[list[dict[str, float | str]]] = []
+    for glyph in glyphs:
+        if not lines or abs(float(glyph["top"]) - float(lines[-1][0]["top"])) > _LINE_TOP_TOLERANCE:
+            lines.append([glyph])
+        else:
+            lines[-1].append(glyph)
+    words: list[dict[str, Any]] = []
+    for line in lines:
+        words.extend(_words_from_glyph_line(line))
+    return words
+
+
+def apply_cash_glyph_gaps(pages: list[dict[str, Any]], glyphs: list[list[dict[str, Any]]]) -> None:
+    """Resplit words only on a recognized cash report. Other PDFs keep the default reader."""
+
+    if recognize_cash_ledger_pdf(pages) is None:
+        return
+    for page, chars in zip(pages, glyphs):
+        if not isinstance(page, dict) or page.get("recovery") or not chars:
+            continue
+        page["words"] = split_words_on_letter_gap(chars)
 
 
 def recognize_cash_ledger_pdf(pages: list[dict[str, Any]]) -> dict[str, Any] | None:
