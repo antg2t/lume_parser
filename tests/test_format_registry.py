@@ -217,6 +217,10 @@ def test_first_grade_unknown_titles_pause_instead_of_reading_the_invest_block(tm
     assert "Lançamentoss" in proposal["headers"]
     assert proposal["headers"] != ["Data", "Histórico", "Valor (R$)"]
     assert proposal["samples"]["2"][0] == "TED SYNGENTA"
+    suggested = set(proposal["suggestions"].values())
+    assert "credit" in suggested and "debit" in suggested
+    assert "credit_account" not in suggested and "debit_account" not in suggested
+    assert result.errors[0].message != "Qual coluna é o valor?"
 
 
 def test_first_grade_known_titles_read_the_extract_and_skip_invest_balance(tmp_path: Path, monkeypatch) -> None:
@@ -250,3 +254,100 @@ def test_confirmed_map_on_the_first_grade_reads_every_extract_row(tmp_path: Path
     assert result.success, result.errors
     descriptions = [item["description"] for item in result.data["transactions"]]
     assert descriptions == ["TED SYNGENTA", "PAGTO ALUGUEL"]
+
+
+def _pause_without_rows(result):
+    assert not result.success
+    assert result.errors[0].code == "spreadsheet_columns_not_mapped"
+    layout = result.errors[0].details["layout"]
+    assert "transactions" not in result.data
+    assert "ledgers" not in result.data
+    return layout
+
+
+def test_english_balance_is_not_prefilled_as_amount(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _xlsx(
+        tmp_path,
+        ["Date", "Description", "Amount", "Balance"],
+        [["02/03/2026", "compra", -22, 978], ["03/03/2026", "deposito", 100, 1078]],
+        "ingles.xlsx",
+    )
+
+    layout = _pause_without_rows(run_pipeline(path, tmp_path / "out"))
+
+    assert layout["suggestions"].get("4") != "amount"
+    assert "amount" not in layout["suggestions"].values()
+    assert layout["missing"] == ["amount"]
+    assert run_pipeline(path, tmp_path / "out").errors[0].message == "Qual coluna é o valor?"
+    confirmed = run_pipeline(
+        path,
+        tmp_path / "out-ok",
+        layout_map={
+            "family": "bank",
+            "headerRow": layout["headerRow"],
+            "sheet": layout["sheet"],
+            "columns": {"date": 1, "description": 2, "amount": 3, "balance": 4},
+        },
+    )
+    assert confirmed.success, confirmed.errors
+    assert [row["amount"] for row in confirmed.data["transactions"]] == ["-22.00", "100.00"]
+
+
+def test_receitas_despesas_does_not_store_the_expense_as_the_sale(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _xlsx(
+        tmp_path,
+        ["Data", "Descrição", "Receitas", "Despesas"],
+        [["02/03/2026", "Venda", 300, 0], ["03/03/2026", "Aluguel", 0, 80]],
+        "receitas.xlsx",
+    )
+
+    layout = _pause_without_rows(run_pipeline(path, tmp_path / "out"))
+
+    assert layout["suggestions"].get("4") != "amount"
+    assert "amount" not in layout["suggestions"].values()
+    assert "amount" in layout["missing"]
+
+
+def test_data_mov_confirms_the_movement_not_the_balance(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _xlsx(
+        tmp_path,
+        ["Data Mov.", "Nr. Doc.", "Histórico", "Valor", "Saldo"],
+        [["02/03/2026", "1", "tarifa", -8, 42], ["03/03/2026", "2", "deposito", 50, 92]],
+        "data-mov.xlsx",
+    )
+
+    layout = _pause_without_rows(run_pipeline(path, tmp_path / "out"))
+
+    assert layout["suggestions"].get("4") == "amount"
+    assert layout["suggestions"].get("5") == "balance"
+    assert "amount" not in layout["missing"]
+    confirmed = run_pipeline(
+        path,
+        tmp_path / "out-ok",
+        layout_map={
+            "family": "bank",
+            "headerRow": layout["headerRow"],
+            "sheet": layout["sheet"],
+            "columns": {"date": 1, "description": 3, "amount": 4, "balance": 5},
+        },
+    )
+    assert confirmed.success, confirmed.errors
+    assert [row["amount"] for row in confirmed.data["transactions"]] == ["-8.00", "50.00"]
+
+
+def test_exact_valor_still_enters_alone(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _xlsx(
+        tmp_path,
+        ["Data", "Lançamento", "Valor"],
+        [["02/03/2026", "compra", -22]],
+        "exato.xlsx",
+    )
+
+    result = run_pipeline(path, tmp_path / "out")
+
+    assert result.success, result.errors
+    assert result.data["transactions"][0]["amount"] == "-22.00"

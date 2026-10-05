@@ -264,8 +264,8 @@ def _suggest_field(title: str, values: list[str]) -> tuple[str | None, float]:
         return "date", 0.45
     if kind == "tax_id":
         return "tax_id", 0.45
-    if kind == "money":
-        return "amount", 0.40
+    # A number in the cell is not a column title. Valor, Saldo, Crédito and
+    # Débito come from the header, so the rightmost money column cannot win.
     return None, 0.0
 
 

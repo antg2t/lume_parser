@@ -83,24 +83,29 @@ def finish_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
         columns = list(range(1, len(headers) + 1))
         finished["columns"] = columns
     folded = [fold_text(header) for header in headers]
+    balance_titles = format_registry.ALIASES["balance"]
+    has_balance = "balance" in suggestions.values() or any(name in balance_titles for name in folded)
     for index, name in enumerate(folded):
         field = _HEADER_FIELDS.get(name)
+        if field in {"credit_account", "debit_account"} and has_balance:
+            continue
         if field and field not in suggestions.values():
             suggestions[str(columns[index])] = field
-    # Debit/credit aliases already used by extrato stay, and also answer
-    # histórico when the row is an accounting entry rather than a statement.
-    if "debit" in suggestions.values() and "debit_account" not in suggestions.values():
-        if "COMPLEMENTO" in folded or "SALDO" not in folded:
-            for key, value in list(suggestions.items()):
-                if value == "debit":
-                    suggestions[key] = "debit_account"
-                    break
-    if "credit" in suggestions.values() and "credit_account" not in suggestions.values():
-        if "COMPLEMENTO" in folded or "SALDO" not in folded:
-            for key, value in list(suggestions.items()):
-                if value == "credit":
-                    suggestions[key] = "credit_account"
-                    break
+    # Extrato keeps Crédito/Débito as the movement. Histórico, which has no
+    # saldo column, still reads those titles as accounts.
+    if not has_balance:
+        if "debit" in suggestions.values() and "debit_account" not in suggestions.values():
+            if "COMPLEMENTO" in folded or "SALDO" not in folded:
+                for key, value in list(suggestions.items()):
+                    if value == "debit":
+                        suggestions[key] = "debit_account"
+                        break
+        if "credit" in suggestions.values() and "credit_account" not in suggestions.values():
+            if "COMPLEMENTO" in folded or "SALDO" not in folded:
+                for key, value in list(suggestions.items()):
+                    if value == "credit":
+                        suggestions[key] = "credit_account"
+                        break
     finished["suggestions"] = suggestions
     mapped = set(suggestions.values())
     family = finished.get("family") if finished.get("family") in _REQUIRED else _guess_family(mapped, folded)
