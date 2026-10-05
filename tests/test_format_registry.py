@@ -250,3 +250,39 @@ def test_confirmed_map_on_the_first_grade_reads_every_extract_row(tmp_path: Path
     assert result.success, result.errors
     descriptions = [item["description"] for item in result.data["transactions"]]
     assert descriptions == ["TED SYNGENTA", "PAGTO ALUGUEL"]
+
+
+def test_english_balance_is_not_suggested_as_amount(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _xlsx(
+        tmp_path,
+        ["Date", "Description", "Amount", "Balance"],
+        [["02/03/2026", "compra", -22, 978], ["03/03/2026", "deposito", 100, 1078]],
+        "ingles.xlsx",
+    )
+
+    result = run_pipeline(path, tmp_path / "out")
+
+    assert not result.success
+    layout = result.errors[0].details["layout"]
+    assert layout["suggestions"].get("4") != "amount"
+    assert "amount" not in layout["suggestions"].values()
+    assert "transactions" not in result.data
+
+
+def test_receitas_despesas_is_not_suggested_as_amount(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LUME_FORMAT_REGISTRY", str(tmp_path / "learned.json"))
+    path = _xlsx(
+        tmp_path,
+        ["Data", "Descrição", "Receitas", "Despesas"],
+        [["02/03/2026", "Venda", 300, 0], ["03/03/2026", "Aluguel", 0, 80]],
+        "receitas.xlsx",
+    )
+
+    result = run_pipeline(path, tmp_path / "out")
+
+    assert not result.success
+    layout = result.errors[0].details["layout"]
+    assert layout["suggestions"].get("4") != "amount"
+    assert "amount" not in layout["suggestions"].values()
+    assert "transactions" not in result.data
